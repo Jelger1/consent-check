@@ -149,7 +149,7 @@ LinkedIn, Hotjar, TikTok, YouTube, Microsoft, ...) krijgen alleen een label.
 
 | # | Sleutel in `bevindingen` | Wat er in staat |
 |---|---|---|
-| 1 | `cookies_voor_consent` | Cookies vóór consent, zonder de CMP-eigen cookies en bekende functionele sessiecookies. Onbekende cookies tellen wél mee. |
+| 1 | `cookies_voor_consent` | Cookies vóór consent, zonder de cookie van de CMP zelf en zonder bekende functionele sessiecookies op het eigen domein. Onbekende cookies tellen wél mee, en een functionele cookie op een ánder domein ook: die bewijst dat er contact met die partij was. |
 | 2 | `externe_requests_voor_consent` | Alle hosts buiten het eigen domein, met per host het aantal requests, de herkende tag en de initiator. Onbekende hosts (zoals `*.run.app`) staan er gewoon bij. |
 | 3 | `identifiers_in_payload_voor_consent` | Requests waarvan de URL of POST-body een identifier bevat (`fbp`, `cid`, `gclid`, `sid`, gehashte e-mail, ...), ook als er geen cookie is gezet. |
 | 4 | `ontbrekende_tags_na_consent` + `tag_status` | Per bekende tag: staat hij in HTML/DOM, vuurde hij vóór consent, vuurde hij ná consent, welke cookies horen erbij. Tags die ná consent geen enkel request doen, staan apart. |
@@ -244,6 +244,14 @@ De poort verander je met `PORT=8080 npm start`.
   `#cookiescript_accept`. Daarna wordt de consent bevestigd op twee plekken
   (`currentState().action === "accept"` én het cookie `CookieScriptConsent`);
   anders faalt de scan. Er is geen stille doorgang zonder consent.
+
+  Kijk je mee met een zichtbare browser, dan zie je de banner dus verdwijnen
+  zonder dat er geklikt wordt. Dat is bedoeld: de API is betrouwbaarder dan een
+  knop zoeken, want de opmaak van de banner verschilt per klant.
+- **De cookie van de CMP zelf staat er meestal al vóór consent.** CookieScript
+  zet `CookieScriptConsent` direct bij het laden, met `action: null`: dat betekent
+  "banner getoond, nog niets gekozen". Pas na het accepteren staat er
+  `action: "accept"` in. Beide momenten staan in `raw_data` onder `cmp_state`.
 - **Third-party cookies staan aan** en de browser meldt zich als een gewone
   Chrome-bezoeker (zonder "Headless" in de user-agent), zodat de meting is wat
   een bezoeker krijgt. `browser.third_party_cookies_waargenomen` laat zien of er
