@@ -76,6 +76,13 @@ Regels voor de meetkant:
   Vang alles af: een rare site mag een meting niet laten crashen.
 - **Fasering via `tracker.fase`.** Requests krijgen de fase op het moment van
   starten; de scanner zet de fase op `na_consent` vlak vóór de consent-aanroep.
+- **Meting 1 moet een nulmeting zijn.** Na meting 1 controleert de scanner met
+  `consentAlGegeven()` of er al een keuze vastligt (iemand die in een zichtbaar
+  venster klikt). Zo ja, dan komt er een waarschuwing in het rapport: de scan
+  gaat door, maar de cijfers onder "vóór consent" horen dan deels bij de
+  situatie erna. Lees die status uit de CMP-API, niet uit de cookies:
+  CookieScript zet zijn cookie al bij het tonen van de banner, met
+  `action: null` zolang er niets gekozen is.
 
 Regels voor de interface en de server:
 

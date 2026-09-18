@@ -107,6 +107,7 @@ in de kaart erbij.
 | "De scanner is nog niet compleet" | `npm install` of `npm run browser` is nog niet gedraaid. De melding zegt welke van de twee. |
 | Browser opent niet vanzelf | Ga handmatig naar `http://localhost:3000`. Met `PORT=8080 npm start` kies je een andere poort, bijvoorbeeld als 3000 bezet is. |
 | Windows waarschuwt bij `start.cmd` | SmartScreen kent het bestand niet. Kies *Meer informatie → Toch uitvoeren*. Dat gebeurt alleen de eerste keer. |
+| Twee scans van dezelfde site verschillen sterk | Is er in het zichtbare browservenster geklikt? Dan staat er een waarschuwing boven het rapport. Scan opnieuw en laat het venster met rust, of zet de schakelaar uit. |
 
 ## Zonder interface: de CLI
 
@@ -248,6 +249,12 @@ De poort verander je met `PORT=8080 npm start`.
   Kijk je mee met een zichtbare browser, dan zie je de banner dus verdwijnen
   zonder dat er geklikt wordt. Dat is bedoeld: de API is betrouwbaarder dan een
   knop zoeken, want de opmaak van de banner verschilt per klant.
+- **Klik niet zelf in dat venster.** Accepteer je de banner tijdens de eerste
+  tien seconden, dan vuren alle tags nog tijdens meting 1. Die meting is dan
+  geen nulmeting meer: de cookies en requests van ná consent staan onder "vóór
+  consent", en meting 2 laat bijna geen verschil meer zien. De tool controleert
+  dit en zet er een waarschuwing bij; in de JSON staat het onder
+  `raw_data.voor_consent.consent_al_gegeven`.
 - **De cookie van de CMP zelf staat er meestal al vóór consent.** CookieScript
   zet `CookieScriptConsent` direct bij het laden, met `action: null`: dat betekent
   "banner getoond, nog niets gekozen". Pas na het accepteren staat er

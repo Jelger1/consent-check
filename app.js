@@ -31,6 +31,7 @@ const logCard = document.getElementById('log-card');
 const logBox = document.getElementById('log');
 const logToggle = document.getElementById('log-toggle');
 const backendMelding = document.getElementById('backend-melding');
+const headedWaarschuwing = document.getElementById('headed-waarschuwing');
 
 const EMPTY_STATE = output.innerHTML; // de lege staat staat in index.html en komt hier terug
 
@@ -802,6 +803,15 @@ function samenvattingMarkdown(rapport) {
     return regels.join('\n');
   }
 
+  const vooraf = rapport.raw_data?.voor_consent?.consent_al_gegeven;
+  if (vooraf?.gegeven) {
+    regels.push(
+      `> **Let op:** vóór meting 1 was er al consent gegeven (${vooraf.cmp}: ${vooraf.detail}).`,
+      '> De cijfers onder "vóór consent" horen daardoor deels bij de situatie ná consent.',
+      '',
+    );
+  }
+
   const cmp = rapport.cmp_info;
   regels.push(
     `**CMP's actief:** ${cmp.detected.length ? cmp.detected.join(', ') : 'geen'}`,
@@ -928,6 +938,8 @@ function updateFieldState() {
   const urls = leesUrls();
   urlsField.closest('.field').classList.toggle('is-filled', urls.length > 0);
   headedField.closest('.field').classList.add('is-filled'); // instellingen zijn altijd geldig
+  // De waarschuwing alleen tonen als er ook echt een venster opengaat.
+  headedWaarschuwing.classList.toggle('hidden', !headedField.checked);
 
   const ongeldig = urls.filter((url) => !URL_PATTERN.test(url));
   if (urls.length === 0) {
