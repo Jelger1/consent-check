@@ -1,0 +1,19 @@
+{
+  "name": "consent-check",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Interne consent-tool: meet per website wat er vóór en ná cookie-consent gebeurt (cookies, requests, iframes, CMP) en schrijft de feiten naar JSON.",
+  "main": "scan.js",
+  "scripts": {
+    "scan": "node scan.js",
+    "scan:headed": "node scan.js --headed",
+    "browser": "playwright install chromium"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "playwright": "^1.63.0"
+  }
+}

@@ -1,0 +1,18 @@
+node_modules/
+.env
+.env.local
+.env*.local
+.DS_Store
+npm-debug.log*
+
+# Scanresultaten: per scan een JSON, horen niet in versiebeheer
+output/*
+!output/.gitkeep
+
+# Lokale back-ups van VS Code (Local History)
+.history/
+
+# Referentieprojecten die alleen als stijlvoorbeeld in deze werkmap staan
+Landingpage-AdsOptimizer/
+Pure-Minds-Post-Maker/
+SEO-contentGap-Analyzer/

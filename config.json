@@ -1,0 +1,17 @@
+{
+  "urls": [
+    "https://www.beweegklinieksittard.nl/",
+    "https://www.rugcentrumparkstad.nl/"
+  ],
+  "output_map": "output",
+  "headless": true,
+  "wachttijden": {
+    "minimaal_voor_consent_ms": 10000,
+    "minimaal_na_consent_ms": 8000,
+    "maximaal_ms": 30000,
+    "netwerk_rust_ms": 2000,
+    "navigatie_timeout_ms": 45000,
+    "consent_timeout_ms": 15000,
+    "html_timeout_ms": 20000
+  }
+}
