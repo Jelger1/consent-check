@@ -7,18 +7,31 @@ Je ziet de acht bevindingen in de interface en krijgt per URL de volledige JSON
 met de ruwe meting. De tool oordeelt niet: hij levert feiten, die jij of een LLM
 interpreteert.
 
+> ### Downloaden en starten
+>
+> 1. **[Download de tool als ZIP](https://github.com/Jelger1/consent-check/archive/refs/heads/main.zip)**
+>    en pak hem uit, bijvoorbeeld in je map Documenten.
+> 2. Heb je Node.js nog niet? Installeer de LTS-versie van
+>    [nodejs.org](https://nodejs.org). Eenmalig, alles standaard laten staan.
+> 3. Dubbelklik **`start.cmd`** (Windows) of `start.sh` (macOS).
+>
+> De eerste keer installeert de tool zichzelf, ongeveer een minuut. Daarna gaat
+> je browser vanzelf open op `http://localhost:3000`.
+>
+> Waarschuwt Windows dat het bestand van internet komt? Klik met rechts op de
+> ZIP vóór het uitpakken, kies *Eigenschappen* en vink onderaan **Blokkering
+> opheffen** aan. Dat scheelt de melding bij elk bestand.
+>
+> `npm run snelkoppeling` zet daarna een icoon op je bureaublad, zodat je de
+> map niet meer hoeft op te zoeken.
+
 ## Starten
 
-**De makkelijke manier: dubbelklikken.**
+**De makkelijke manier: dubbelklikken.** Zie het blok bovenaan deze pagina.
+Kort samengevat: ZIP downloaden, uitpakken, `start.cmd` dubbelklikken. Wie git
+gebruikt kan in plaats van de ZIP ook
+`git clone https://github.com/Jelger1/consent-check.git` draaien.
 
-1. Heb je Node.js nog niet? Download de LTS-versie op [nodejs.org](https://nodejs.org)
-   en installeer die, alles standaard. Dit is eenmalig.
-2. Haal deze map binnen: op GitHub op **Code → Download ZIP**, en pak het uit.
-   Wie git gebruikt kan ook `git clone https://github.com/Jelger1/consent-check.git`.
-3. Dubbelklik **`start.cmd`** (Windows) of `start.sh` (macOS/Linux).
-
-Dat is alles. De eerste keer installeert hij zichzelf (ongeveer een minuut,
-150 MB aan browser), daarna opent je browser vanzelf op `http://localhost:3000`.
 Het zwarte venster dat openblijft ís de tool; sluit je dat, dan stopt hij.
 
 **Een icoon op je bureaublad.** Draai dit één keer:
