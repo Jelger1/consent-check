@@ -57,6 +57,14 @@
 
     <!-- Invoer -->
     <section class="no-print min-w-0 lg:col-span-2 lg:min-h-0 lg:flex lg:flex-col lg:gap-4">
+      <!--
+        Verschijnt als er geen scanner bereikbaar is: op een statische kopie
+        (GitHub Pages), bij een rechtstreeks geopend bestand, of als de lokale
+        server niet draait. app.js vult de inhoud, want wat er moet gebeuren
+        hangt af van wáár de pagina geopend is.
+      -->
+      <div id="backend-melding" class="hidden flex-none"></div>
+
       <form id="scan-form" class="card border-t-[3px] border-t-pm-cyan p-5 sm:p-6 flex flex-col gap-5 flex-none">
         <div class="sm:hidden">
           <h1 class="text-base font-bold leading-tight">Consent-check</h1>

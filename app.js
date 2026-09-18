@@ -30,6 +30,7 @@ const progressBar = document.getElementById('progress-bar');
 const logCard = document.getElementById('log-card');
 const logBox = document.getElementById('log');
 const logToggle = document.getElementById('log-toggle');
+const backendMelding = document.getElementById('backend-melding');
 
 const EMPTY_STATE = output.innerHTML; // de lege staat staat in index.html en komt hier terug
 
@@ -45,6 +46,15 @@ const URL_PATTERN = /^(https?:\/\/\S+|([a-z0-9-]+\.)+[a-z]{2,}(:\d+)?([/?#]\S*)?
 let rapporten = [];
 let isLoading = false;
 let timer = null;
+let backendKlaar = false;
+
+/**
+ * Adressen van de API, relatief aan de pagina. Zo werkt de tool ook als hij
+ * onder een submap wordt geserveerd in plaats van op de hoofdmap.
+ */
+function api(pad) {
+  return new URL(pad, document.baseURI).href;
+}
 
 // --- Kleine DOM-helpers --------------------------------------------------------
 
@@ -189,13 +199,13 @@ function leesUrls() {
 async function scan(urls, headed) {
   let response;
   try {
-    response = await fetch('/api/scan', {
+    response = await fetch(api('api/scan'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ urls, headed }),
     });
   } catch {
-    throw Object.assign(new Error('Geen verbinding met de lokale server.'), { code: 'offline' });
+    throw Object.assign(new Error('Geen verbinding met de scanner.'), { code: 'offline' });
   }
 
   if (!response.ok || !response.body) {
@@ -249,6 +259,86 @@ function verwerk(gebeurtenis) {
     default:
       break;
   }
+}
+
+// --- Staat de scanner klaar? ------------------------------------------------------
+
+/**
+ * De interface is een gewone HTML-pagina en kan dus overal geopend worden: op
+ * GitHub Pages, rechtstreeks vanaf schijf, of via de lokale server. Alleen in
+ * dat laatste geval is er een scanner. Wat er moet gebeuren verschilt per
+ * geval, dus dat zoeken we hier uit en zetten we bovenaan het scherm.
+ */
+async function controleerBackend() {
+  if (location.protocol === 'file:') {
+    toonBackendMelding({
+      titel: 'Open de tool via de server, niet als bestand',
+      uitleg: 'Je hebt index.html rechtstreeks geopend. De scan heeft een lokale server nodig die een echte browser start.',
+      stappen: ['npm install', 'npm run browser', 'npm start'],
+      slot: 'Ga daarna naar http://localhost:3000. Die pagina ziet er hetzelfde uit, maar kan wél scannen.',
+    });
+    return;
+  }
+
+  let data;
+  try {
+    const response = await fetch(api('api/health'), { cache: 'no-store' });
+    data = await response.json();
+  } catch {
+    // Geen /api/health: dit is een statische kopie, of de server ligt eruit.
+    const lokaal = ['localhost', '127.0.0.1'].includes(location.hostname);
+    toonBackendMelding(lokaal
+      ? {
+        titel: 'De server draait niet',
+        uitleg: 'Deze pagina staat nog in je browser, maar de server erachter is gestopt.',
+        stappen: ['npm start'],
+        slot: 'Draai dat in de map consent-check en ververs deze pagina.',
+      }
+      : {
+        titel: 'Dit is een statische kopie: scannen kan hier niet',
+        uitleg: 'Deze pagina wordt geserveerd als los bestand, bijvoorbeeld door GitHub Pages. '
+          + 'Scannen kan daar niet: de tool start een echte browser en meet het netwerkverkeer, en dat draait op een computer, niet op een webpagina. '
+          + 'De interface werkt verder gewoon; alleen de knop "start scan" doet hier niets.',
+        stappen: ['git clone https://github.com/Jelger1/consent-check.git', 'cd consent-check', 'npm install', 'npm run browser', 'npm start'],
+        slot: 'De laatste opdracht opent de tool op http://localhost:3000, met een werkende scanner.',
+      });
+    return;
+  }
+
+  if (!data.klaar) {
+    // De server draait wel, maar mist Playwright of Chromium.
+    toonBackendMelding({
+      titel: 'De scanner is nog niet compleet',
+      uitleg: data.melding,
+      stappen: data.code === 'geen_playwright' ? ['npm install', 'npm run browser'] : ['npm run browser'],
+      slot: 'Draai dat in de map consent-check. De server hoeft niet opnieuw op te starten.',
+    });
+    return;
+  }
+
+  backendKlaar = true;
+  backendMelding.classList.add('hidden');
+  submitBtn.disabled = false;
+  updateFieldState(); // nu pas kan de duurschatting getoond worden
+}
+
+function toonBackendMelding({ titel, uitleg, stappen, slot }) {
+  backendKlaar = false;
+  const box = el('div', 'notice notice-warn card');
+  box.append(el('p', 'notice-title', titel));
+  box.append(el('p', 'mt-1 text-sm leading-6', uitleg));
+  if (stappen?.length) {
+    const code = el('pre', 'mt-2 bg-pm-ink text-[#cfe6f2] p-3 text-xs leading-6 overflow-x-auto');
+    code.textContent = stappen.join('\n');
+    box.append(code);
+  }
+  if (slot) box.append(el('p', 'mt-2 text-sm leading-6', slot));
+
+  backendMelding.replaceChildren(box);
+  backendMelding.classList.remove('hidden');
+  // De knop uitzetten is eerlijker dan hem te laten klikken en falen.
+  submitBtn.disabled = true;
+  duurHint.textContent = 'Scannen kan pas als de scanner draait';
 }
 
 // --- Log -----------------------------------------------------------------------
@@ -764,6 +854,9 @@ const FOUT_UITLEG = {
   ongeldige_url: 'Gebruik een volledig webadres, bijvoorbeeld www.klant.nl of https://www.klant.nl/contact.',
   bezet: 'Er draait al een scan. Wacht tot die klaar is.',
   server_fout: 'Kijk in het terminalvenster waar de server draait: daar staat de volledige fout.',
+  geen_playwright: 'Draai `npm install` in de map consent-check.',
+  geen_browser: 'Draai `npm run browser` in de map consent-check. Dat downloadt Chromium (ongeveer 150 MB).',
+  te_veel_urls: 'Scan ze in kleinere groepen.',
 };
 
 function renderError(error) {
@@ -787,7 +880,7 @@ function isDesktop() {
 
 function setLoading(loading, aantalUrls = 0) {
   isLoading = loading;
-  submitBtn.disabled = loading;
+  submitBtn.disabled = loading || !backendKlaar;
   resetBtn.disabled = loading;
   urlsField.disabled = loading;
   headedField.disabled = loading;
@@ -848,6 +941,9 @@ function updateFieldState() {
     urlsHint.className = 'field-hint is-ok';
   }
 
+  // Zonder scanner staat daar de uitleg uit toonBackendMelding; die niet overschrijven.
+  if (!backendKlaar) return;
+
   // Ruwe schatting op basis van de gemeten scanduur: een halve minuut per URL.
   const totaalSeconden = Math.max(urls.length, 1) * 30;
   const minuten = Math.round(totaalSeconden / 60);
@@ -895,6 +991,7 @@ function storageRemove(sleutel) {
   urlsField.value = storageGet(STORAGE.draft) || '';
   headedField.checked = storageGet(STORAGE.headed) === '1';
   updateFieldState();
+  controleerBackend();
 
   try {
     const bewaard = JSON.parse(storageGet(STORAGE.rapporten) || 'null');

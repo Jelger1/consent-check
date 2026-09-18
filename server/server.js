@@ -5,22 +5,25 @@
    draait hier, want Playwright start een echte Chromium en kan dus niet in de
    browser of op een serverless functie draaien.
 
-   POST /api/scan  {"urls": [...], "headed": false}
-                   -> NDJSON: één gebeurtenis per regel, zodat de interface
-                      kan meelezen terwijl de scan loopt (een halve minuut per URL).
+   GET  /api/health  -> of de scanner klaarstaat (Playwright en Chromium aanwezig).
+                        De interface vraagt dit bij het laden, zodat hij meteen
+                        kan uitleggen wat er ontbreekt.
+   POST /api/scan    {"urls": [...], "headed": false}
+                     -> NDJSON: één gebeurtenis per regel, zodat de interface
+                        kan meelezen terwijl de scan loopt (een halve minuut per URL).
 
    Omgevingsvariabelen:
      PORT   poort om op te luisteren (standaard 3000)
    ============================================================================= */
 
-import { createReadStream } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { createReadStream, existsSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import http from 'node:http';
 import { dirname, extname, join, normalize, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { STANDAARD_WACHTTIJDEN, laadConfig, normaliseerUrl } from '../lib/config.js';
 import { bouwRapport, schrijfRapport } from '../lib/report.js';
-import { scanUrl } from '../lib/scanner.js';
 import { seconden } from '../lib/util.js';
 
 const PROJECTMAP = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -54,6 +57,48 @@ const UI_MAPPEN = ['/assets/'];
 
 /** Eén scan tegelijk: elke scan start een eigen Chromium, parallel draaien vertekent de meting. */
 let bezet = false;
+
+/**
+ * Of alles klaarstaat om te kunnen scannen. Wordt bij het opstarten gevuld en
+ * via /api/health aan de interface doorgegeven, zodat die meteen kan zeggen
+ * wat er ontbreekt in plaats van pas bij de eerste scan een fout te geven.
+ */
+let omgeving = { klaar: false, code: 'nog_niet_gecontroleerd', melding: 'Omgeving wordt gecontroleerd.' };
+
+/**
+ * Playwright wordt pas geladen als er echt gescand wordt. Zo start de server
+ * (en dus de uitleg in de interface) ook op als `npm install` nog niet gedraaid
+ * heeft — precies het geval waarin de gebruiker die uitleg nodig heeft.
+ */
+let scannerModule = null;
+
+async function laadScanner() {
+  if (!scannerModule) scannerModule = await import('../lib/scanner.js');
+  return scannerModule.scanUrl;
+}
+
+/** Staat Playwright er, en is Chromium gedownload? Beide zijn een aparte stap. */
+async function controleerOmgeving() {
+  let chromium;
+  try {
+    ({ chromium } = await import('playwright'));
+  } catch (error) {
+    if (/cannot find (module|package)/i.test(error.message)) {
+      return { klaar: false, code: 'geen_playwright', melding: 'Playwright is nog niet geïnstalleerd. Draai eerst: npm install' };
+    }
+    return { klaar: false, code: 'playwright_fout', melding: `Playwright kon niet geladen worden: ${error.message.split('\n')[0]}` };
+  }
+
+  try {
+    const pad = chromium.executablePath();
+    if (!existsSync(pad)) {
+      return { klaar: false, code: 'geen_browser', melding: 'Chromium is nog niet gedownload. Draai eenmalig: npm run browser' };
+    }
+    return { klaar: true, code: 'klaar', melding: 'Klaar om te scannen.' };
+  } catch (error) {
+    return { klaar: false, code: 'geen_browser', melding: `Chromium is nog niet gedownload (${error.message.split('\n')[0]}). Draai eenmalig: npm run browser` };
+  }
+}
 
 // --- Statische bestanden -------------------------------------------------------
 
@@ -128,6 +173,16 @@ async function handleScan(req, res) {
     return;
   }
 
+  if (!omgeving.klaar) {
+    // Opnieuw kijken: misschien heeft de gebruiker `npm run browser` gedraaid
+    // terwijl de server al aan stond.
+    omgeving = await controleerOmgeving();
+    if (!omgeving.klaar) {
+      stuurJson(res, 503, { error: omgeving.melding, code: omgeving.code });
+      return;
+    }
+  }
+
   if (bezet) {
     stuurJson(res, 409, { error: 'Er draait al een scan. Wacht tot die klaar is.', code: 'bezet' });
     return;
@@ -159,6 +214,8 @@ async function handleScan(req, res) {
   });
 
   try {
+    const scanUrl = await laadScanner();
+
     for (const [index, { url }] of genormaliseerd.entries()) {
       if (afgebroken) break;
       stuur({ type: 'start', url, nummer: index + 1, totaal: genormaliseerd.length });
@@ -222,8 +279,9 @@ function stuurTekst(res, status, tekst) {
 // --- Server ------------------------------------------------------------------------
 
 const server = http.createServer((req, res) => {
-  if (req.url === '/health') {
-    stuurJson(res, 200, { ok: true, bezet });
+  // /health is er voor hostingplatforms, /api/health voor de interface.
+  if (req.url === '/health' || req.url === '/api/health') {
+    stuurJson(res, 200, { ok: true, bezet, ...omgeving, versie: '1.0.0' });
     return;
   }
   if (req.url === '/api/scan') {
@@ -252,6 +310,33 @@ server.requestTimeout = 0;
 server.headersTimeout = 0;
 server.timeout = 0;
 
-server.listen(PORT, HOST, () => {
-  console.log(`Consent-check draait op http://localhost:${PORT}`);
+/** Opent de interface in de standaardbrowser, zodat `npm start` genoeg is. */
+function openBrowser(adres) {
+  const commando = process.platform === 'win32'
+    ? ['cmd', ['/c', 'start', '', adres]]
+    : process.platform === 'darwin'
+      ? ['open', [adres]]
+      : ['xdg-open', [adres]];
+  try {
+    spawn(commando[0], commando[1], { stdio: 'ignore', detached: true }).unref();
+  } catch {
+    // Geen browser beschikbaar (bijvoorbeeld in een container): het adres staat in de console.
+  }
+}
+
+server.listen(PORT, HOST, async () => {
+  const adres = `http://localhost:${PORT}`;
+  omgeving = await controleerOmgeving();
+
+  console.log(`\nConsent-check draait op ${adres}`);
+  if (omgeving.klaar) {
+    console.log('Klaar om te scannen. Sluit dit venster om te stoppen.\n');
+  } else {
+    // Geen harde stop: de interface draait wel en legt uit wat er moet gebeuren.
+    console.log(`\n  LET OP: ${omgeving.melding}`);
+    console.log('  De interface werkt al wel en laat zien wat er nog moet gebeuren.\n');
+  }
+
+  // Alleen lokaal: op een server is er geen browser om te openen.
+  if (HOST === '127.0.0.1' && !process.env.NO_OPEN) openBrowser(adres);
 });

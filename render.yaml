@@ -1,0 +1,20 @@
+# Render Blueprint: Dashboard -> New -> Blueprint -> kies deze repo.
+#
+# Draait de tool als container, omdat Playwright een echte Chromium nodig heeft
+# (zie Dockerfile). Let op het plan: Chromium vraagt ongeveer een halve gigabyte
+# geheugen tijdens een scan, dus het gratis plan (512 MB) loopt er regelmatig
+# tegenaan. Met "starter" heb je genoeg ruimte.
+#
+# De rapporten in output/ overleven een herstart niet: de schijf van een
+# container is tijdelijk. Download ze vanuit de interface.
+services:
+  - type: web
+    name: consent-check
+    runtime: docker
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: NO_OPEN
+        value: "1"

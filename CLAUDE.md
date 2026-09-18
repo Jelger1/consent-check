@@ -38,7 +38,8 @@ Tailwind via de Play CDN, net als de andere interne tools.
 | `index.html` | De UI: formulier, logvenster, resultaatkaart, lege staat, skeleton-template. |
 | `styles.css` | Designsysteem van pureminds.nl plus de toolspecifieke bevindingenregels. |
 | `app.js` | Frontend: formulier, NDJSON-stroom lezen, de acht regels renderen, kopiëren en downloaden. |
-| `server/server.js` | Lokale server: statische UI-bestanden en `POST /api/scan` (NDJSON). |
+| `server/server.js` | Lokale server: statische UI-bestanden, `GET /api/health` en `POST /api/scan` (NDJSON). |
+| `Dockerfile`, `render.yaml` | Draaien op een hostingplatform, met de officiële Playwright-image. |
 | `scan.js` | CLI en de lus over de URL's. Exitcode 1 als één scan mislukt. |
 | `lib/scanner.js` | De kernflow per URL. Vangt fouten per stap en bewaart wat al gemeten is. |
 | `lib/browser.js` | Chromium, schone context, netwerk-tracker met fase, CDP-initiators, rustig-netwerk-wachter. |
@@ -90,6 +91,17 @@ Regels voor de interface en de server:
   loopt; elke gebeurtenis is één regel JSON.
 - **Kleur is een leeswijzer, geen oordeel.** Het regelnummer kleurt naar
   "aangetroffen / niets gevonden". De tekst eromheen blijft feitelijk.
+- **De pagina legt zelf uit wat er ontbreekt.** `index.html` is een gewoon
+  bestand en kan overal geopend worden: op GitHub Pages, vanaf schijf, of via de
+  server. Bij het laden vraagt `app.js` aan `GET /api/health` of de scanner
+  klaarstaat; is die er niet, dan verschijnt een melding met de commando's die
+  passen bij wáár de pagina geopend is, en gaat de knop uit. Nooit een klik
+  laten mislukken met een HTTP-code als uitleg.
+- **Playwright wordt pas geladen bij de eerste scan.** Daardoor start de server
+  ook als `npm install` nog niet gedraaid heeft, en kan de interface dát juist
+  melden. Importeer `lib/scanner.js` dus niet bovenaan `server/server.js`.
+- **API-adressen zijn relatief** (`api('api/scan')`), zodat de tool ook werkt
+  als hij onder een submap wordt geserveerd.
 
 ---
 

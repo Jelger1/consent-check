@@ -9,17 +9,45 @@ interpreteert.
 
 ## Starten
 
-Vereist Node.js 20 of hoger.
+Vereist Node.js 20 of hoger. Eenmalig, in de map `consent-check`:
 
 ```bash
-npm install                      # Playwright
-npm run browser                  # eenmalig: Chromium downloaden (~150 MB)
-npm start                        # http://localhost:3000
+npm install          # Playwright installeren
+npm run browser      # Chromium downloaden (ongeveer 150 MB)
 ```
 
-De server draait alleen op je eigen machine (127.0.0.1) en start bij elke scan
-een echte Chromium. Daarom is dit een lokale tool en geen website: Playwright
-kan niet in de browser of op een serverless functie draaien.
+Daarna elke keer als je de tool wilt gebruiken:
+
+```bash
+npm start
+```
+
+De tool opent zelf je browser op `http://localhost:3000`. Gebeurt dat niet, ga
+er dan handmatig heen. Het terminalvenster moet openblijven: dat ís de server.
+Sluit je het, dan stopt de tool.
+
+Werkt er iets niet, dan zegt de pagina zelf wat eraan ontbreekt: hij vraagt bij
+het laden aan de server of Playwright en Chromium klaarstaan.
+
+### Waarom kan de GitHub Pages-link niet scannen?
+
+`https://jelger1.github.io/consent-check/` laat de interface zien, maar scannen
+lukt daar niet, en dat is niet te repareren met een instelling. GitHub Pages
+serveert alleen kant-en-klare bestanden; het draait geen programma's. Deze tool
+moet juist een echte Chromium starten, naar een website surfen en al het
+netwerkverkeer meelezen. Dat gebeurt op een computer, niet in een webpagina.
+
+Op die link laat de tool nu een uitleg zien met de commando's om hem lokaal te
+draaien. Wil je de link helemaal weghalen: GitHub → repository → Settings →
+Pages → *Source* op **None**.
+
+Moet de tool tóch via een link bereikbaar zijn voor collega's, dan heb je een
+server nodig die containers kan draaien. `Dockerfile` en `render.yaml` staan
+klaar: Render → *New* → *Blueprint* → kies deze repository. Let op dat Chromium
+tijdens een scan ongeveer een halve gigabyte geheugen vraagt, dus het gratis
+plan van Render is te krap; `render.yaml` staat daarom op het starter-plan.
+Rapporten in `output/` overleven daar geen herstart, dus download ze vanuit de
+interface.
 
 ## De interface
 
@@ -40,6 +68,16 @@ blijven de feiten; de kleur is alleen een hulpmiddel.
 
 Elk rapport wordt ook als JSON-bestand in `output/` gezet, met de bestandsnaam
 in de kaart erbij.
+
+### Als er niets gebeurt
+
+| Wat je ziet | Wat er aan de hand is |
+|---|---|
+| "Dit is een statische kopie" | Je bekijkt de pagina op GitHub Pages of een andere statische host. Volg de commando's in die melding. |
+| "Open de tool via de server, niet als bestand" | Je hebt `index.html` dubbelgeklikt. Draai `npm start` en ga naar `http://localhost:3000`. |
+| "De server draait niet" | Het terminalvenster is gesloten of de server is gestopt. Draai `npm start` opnieuw. |
+| "De scanner is nog niet compleet" | `npm install` of `npm run browser` is nog niet gedraaid. De melding zegt welke van de twee. |
+| Browser opent niet vanzelf | Ga handmatig naar `http://localhost:3000`. Met `PORT=8080 npm start` kies je een andere poort, bijvoorbeeld als 3000 bezet is. |
 
 ## Zonder interface: de CLI
 
@@ -128,7 +166,8 @@ de herkende tag en de initiator (parser of welk script het request startte).
 | `styles.css` | Het designsysteem van pureminds.nl (kaarten, knoppen, velden, tabellen) plus de bevindingenregels van deze tool. |
 | `app.js` | Frontend: formulier, de NDJSON-stroom lezen, de acht regels renderen, kopiëren en downloaden. |
 | `assets/` | Logo en favicon in de huisstijl. |
-| `server/server.js` | Lokale server: serveert de interface en draait de scans via `POST /api/scan`. |
+| `server/server.js` | Lokale server: serveert de interface, meldt via `GET /api/health` of alles klaarstaat en draait de scans via `POST /api/scan`. |
+| `Dockerfile`, `render.yaml` | Voor als de tool ergens moet draaien waar collega's hem via een link gebruiken. |
 | `scan.js` | De CLI: configuratie, de lus over de URL's, console-samenvatting, exitcode. |
 | `lib/scanner.js` | De kernflow per URL: HTML, navigeren, meting 1, consent, meting 2. |
 | `lib/browser.js` | Chromium starten, schone context, netwerk volgen, CDP-initiators, wachten op een rustig netwerk. |
