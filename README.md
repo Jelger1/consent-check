@@ -9,22 +9,37 @@ interpreteert.
 
 ## Starten
 
-Vereist Node.js 20 of hoger. Eenmalig, in de map `consent-check`:
+**De makkelijke manier: dubbelklikken.**
+
+1. Heb je Node.js nog niet? Download de LTS-versie op [nodejs.org](https://nodejs.org)
+   en installeer die, alles standaard. Dit is eenmalig.
+2. Haal deze map binnen: op GitHub op **Code → Download ZIP**, en pak het uit.
+   Wie git gebruikt kan ook `git clone https://github.com/Jelger1/consent-check.git`.
+3. Dubbelklik **`start.cmd`** (Windows) of `start.sh` (macOS/Linux).
+
+Dat is alles. De eerste keer installeert hij zichzelf (ongeveer een minuut,
+150 MB aan browser), daarna opent je browser vanzelf op `http://localhost:3000`.
+Het zwarte venster dat openblijft ís de tool; sluit je dat, dan stopt hij.
+
+**Een icoon op je bureaublad.** Draai dit één keer:
+
+```bash
+npm run snelkoppeling
+```
+
+Dan staat er een Consent-check-icoon op je bureaublad dat de tool start. Je hoeft
+de projectmap dan nooit meer op te zoeken.
+
+**Vanaf de commandoregel**, als je dat toch prettiger vindt:
 
 ```bash
 npm install          # Playwright installeren
 npm run browser      # Chromium downloaden (ongeveer 150 MB)
+npm start            # http://localhost:3000
 ```
 
-Daarna elke keer als je de tool wilt gebruiken:
-
-```bash
-npm start
-```
-
-De tool opent zelf je browser op `http://localhost:3000`. Gebeurt dat niet, ga
-er dan handmatig heen. Het terminalvenster moet openblijven: dat ís de server.
-Sluit je het, dan stopt de tool.
+`npm run setup` doet die drie stappen in één keer; dat is precies wat `start.cmd`
+aanroept.
 
 Werkt er iets niet, dan zegt de pagina zelf wat eraan ontbreekt: hij vraagt bij
 het laden aan de server of Playwright en Chromium klaarstaan.
@@ -78,6 +93,7 @@ in de kaart erbij.
 | "De server draait niet" | Het terminalvenster is gesloten of de server is gestopt. Draai `npm start` opnieuw. |
 | "De scanner is nog niet compleet" | `npm install` of `npm run browser` is nog niet gedraaid. De melding zegt welke van de twee. |
 | Browser opent niet vanzelf | Ga handmatig naar `http://localhost:3000`. Met `PORT=8080 npm start` kies je een andere poort, bijvoorbeeld als 3000 bezet is. |
+| Windows waarschuwt bij `start.cmd` | SmartScreen kent het bestand niet. Kies *Meer informatie → Toch uitvoeren*. Dat gebeurt alleen de eerste keer. |
 
 ## Zonder interface: de CLI
 
@@ -162,6 +178,9 @@ de herkende tag en de initiator (parser of welk script het request startte).
 
 | Pad | Rol |
 |---|---|
+| `start.cmd`, `start.sh` | Dubbelklikken om te starten: regelen zelf de installatie en starten de server. |
+| `scripts/start.js` | Wat die twee aanroepen: controleert, installeert waar nodig en start de server. |
+| `scripts/snelkoppeling.js` | Zet een icoon op het bureaublad dat `start.cmd` opent (Windows). |
 | `index.html` | De interface: formulier, logvenster, resultaatkaart, lege staat en het skeleton-template. |
 | `styles.css` | Het designsysteem van pureminds.nl (kaarten, knoppen, velden, tabellen) plus de bevindingenregels van deze tool. |
 | `app.js` | Frontend: formulier, de NDJSON-stroom lezen, de acht regels renderen, kopiëren en downloaden. |

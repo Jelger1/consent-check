@@ -1,0 +1,7 @@
+# Batchbestanden hebben op Windows CRLF nodig, ongeacht de git-instellingen
+# van degene die de repo binnenhaalt.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Shellscripts juist altijd LF, ook als ze op Windows uitgecheckt worden.
+*.sh text eol=lf

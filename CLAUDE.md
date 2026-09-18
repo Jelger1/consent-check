@@ -38,6 +38,8 @@ Tailwind via de Play CDN, net als de andere interne tools.
 | `index.html` | De UI: formulier, logvenster, resultaatkaart, lege staat, skeleton-template. |
 | `styles.css` | Designsysteem van pureminds.nl plus de toolspecifieke bevindingenregels. |
 | `app.js` | Frontend: formulier, NDJSON-stroom lezen, de acht regels renderen, kopiëren en downloaden. |
+| `start.cmd`, `start.sh`, `scripts/start.js` | Dubbelklik-start: controleren, installeren waar nodig, server starten. Gebruikt alleen ingebouwde Node-modules, want het draait ook vóór `npm install`. |
+| `scripts/snelkoppeling.js` | Bureaubladicoon op Windows; maakt zelf een .ico uit `assets/favicon.png`. |
 | `server/server.js` | Lokale server: statische UI-bestanden, `GET /api/health` en `POST /api/scan` (NDJSON). |
 | `Dockerfile`, `render.yaml` | Draaien op een hostingplatform, met de officiële Playwright-image. |
 | `scan.js` | CLI en de lus over de URL's. Exitcode 1 als één scan mislukt. |

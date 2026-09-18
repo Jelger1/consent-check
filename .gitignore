@@ -9,5 +9,8 @@ npm-debug.log*
 output/*
 !output/.gitkeep
 
+# Gegenereerd uit assets/favicon.png door `npm run snelkoppeling`
+assets/consent-check.ico
+
 # Lokale back-ups van VS Code (Local History)
 .history/

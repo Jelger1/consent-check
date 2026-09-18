@@ -6,10 +6,12 @@
   "description": "Interne consent-tool: meet per website wat er vóór en ná cookie-consent gebeurt (cookies, requests, iframes, CMP) en schrijft de feiten naar JSON.",
   "main": "server/server.js",
   "scripts": {
+    "setup": "node scripts/start.js",
     "start": "node server/server.js",
     "scan": "node scan.js",
     "scan:headed": "node scan.js --headed",
-    "browser": "playwright install chromium"
+    "browser": "playwright install chromium",
+    "snelkoppeling": "node scripts/snelkoppeling.js"
   },
   "engines": {
     "node": ">=20"
