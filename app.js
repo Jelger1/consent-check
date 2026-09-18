@@ -27,9 +27,12 @@ const output = document.getElementById('result-output');
 const actions = document.getElementById('result-actions');
 const statusBadge = document.getElementById('status-badge');
 const progressBar = document.getElementById('progress-bar');
+const invoerKolom = document.getElementById('invoer-kolom');
 const logCard = document.getElementById('log-card');
 const logBox = document.getElementById('log');
 const logToggle = document.getElementById('log-toggle');
+const logKopieer = document.getElementById('log-kopieer');
+const logTeller = document.getElementById('log-teller');
 const backendMelding = document.getElementById('backend-melding');
 const headedWaarschuwing = document.getElementById('headed-waarschuwing');
 
@@ -246,6 +249,8 @@ function verwerk(gebeurtenis) {
     case 'start':
       logRegel(gebeurtenis.url, 'url');
       setStatus('busy', `${gebeurtenis.nummer} van ${gebeurtenis.totaal}`);
+      // Alleen zolang er nog geen rapport binnen is; daarna staan de kaarten er.
+      if (rapporten.length === 0) toonBezig(gebeurtenis);
       break;
     case 'log':
       logRegel(gebeurtenis.melding, gebeurtenis.melding.startsWith('!') ? 'fout' : null);
@@ -344,26 +349,50 @@ function toonBackendMelding({ titel, uitleg, stappen, slot }) {
 
 // --- Log -----------------------------------------------------------------------
 
+let logRegels = [];
+
 function wisLog() {
+  logRegels = [];
   logBox.replaceChildren();
   logBox.classList.remove('hidden');
   logToggle.textContent = 'verberg';
+  logTeller.classList.add('hidden');
   logCard.classList.remove('hidden');
-  logCard.classList.add('lg:flex', 'lg:flex-col', 'lg:min-h-0');
+  // Het venster staat onder het formulier; op een laptopscherm valt het anders
+  // buiten beeld terwijl daar juist te zien is wat er gebeurt.
+  logCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function logRegel(tekst, soort) {
+  const tijd = new Date().toTimeString().slice(0, 8);
+  logRegels.push(`${tijd}  ${tekst}`);
+
   const regel = el('div', `log-regel${soort ? ` is-${soort}` : ''}`);
-  const nu = new Date();
-  regel.append(el('span', 'log-tijd', nu.toTimeString().slice(0, 8)));
+  regel.append(el('span', 'log-tijd', tijd));
   regel.append(el('span', 'min-w-0 break-anywhere', tekst));
+
+  // Alleen meescrollen als de lezer onderaan staat; anders houd je hem niet
+  // meer tegen als hij zelf terugbladert in de log.
+  const onderaan = logBox.scrollHeight - logBox.scrollTop - logBox.clientHeight < 40;
   logBox.append(regel);
-  logBox.scrollTop = logBox.scrollHeight;
+  if (onderaan) logBox.scrollTop = logBox.scrollHeight;
+
+  logTeller.textContent = `${logRegels.length} regels`;
+  logTeller.classList.remove('hidden');
 }
 
 logToggle.addEventListener('click', () => {
   const verborgen = logBox.classList.toggle('hidden');
   logToggle.textContent = verborgen ? 'toon' : 'verberg';
+});
+
+logKopieer.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(logRegels.join('\n'));
+    showTooltip(logKopieer, 'Log gekopieerd');
+  } catch {
+    showTooltip(logKopieer, 'Kopiëren geblokkeerd door de browser');
+  }
 });
 
 // --- Rapporten renderen ---------------------------------------------------------
@@ -492,8 +521,8 @@ function bevinding(nummer, titel, samenvatting, toon, inhoud) {
 function regel1(b) {
   const r = b.cookies_voor_consent;
   const samenvatting = r.gevonden
-    ? `${getal(r.aantal)} cookie(s) gezet vóór consent, waarvan ${getal(r.aantal_third_party)} third-party. CMP- en sessiecookies zijn niet meegeteld.`
-    : 'Geen cookies vóór consent, afgezien van de CMP- en functionele sessiecookies.';
+    ? `${getal(r.aantal)} cookie(s) gezet vóór consent, waarvan ${getal(r.aantal_third_party)} third-party. Niet meegeteld: de cookie van de CMP zelf en functionele cookies op het eigen domein.`
+    : 'Geen cookies vóór consent, afgezien van de cookie van de CMP zelf en functionele cookies op het eigen domein.';
 
   const inhoud = [];
   if (r.details.length) {
@@ -857,6 +886,32 @@ function showSkeleton() {
   progressBar.setAttribute('data-indeterminate', '');
 }
 
+/** Zet boven het skelet welke URL nu aan de beurt is, zodat het wachten niet leeg is. */
+function toonBezig({ url, nummer, totaal }) {
+  const bestaand = document.getElementById('bezig-melding');
+  if (bestaand) {
+    bestaand.querySelector('[data-url]').textContent = url;
+    bestaand.querySelector('[data-teller]').textContent = totaal > 1 ? `${nummer} van ${totaal}` : '';
+    return;
+  }
+
+  const blok = el('div', 'notice mb-4');
+  blok.id = 'bezig-melding';
+  const kop = el('div', 'flex flex-wrap items-center gap-2');
+  kop.append(el('span', 'pill pill-info', 'bezig met scannen'));
+  const teller = el('span', 'pill', totaal > 1 ? `${nummer} van ${totaal}` : '');
+  teller.dataset.teller = '';
+  teller.classList.toggle('hidden', totaal <= 1);
+  kop.append(teller);
+  blok.append(kop);
+  const adres = el('p', 'mt-1.5 text-sm font-bold break-anywhere', url);
+  adres.dataset.url = '';
+  blok.append(adres);
+  blok.append(el('p', 'mt-0.5 text-xs text-pm-muted',
+    'Meten vóór consent, daarna accepteren en opnieuw meten. Links zie je regel voor regel wat er gebeurt.'));
+  output.prepend(blok);
+}
+
 /** Foutmeldingen met een uitleg die past bij wat er misging. */
 const FOUT_UITLEG = {
   geen_urls: 'Zet één URL per regel in het veld, bijvoorbeeld www.klant.nl.',
@@ -978,7 +1033,9 @@ resetBtn.addEventListener('click', () => {
   storageRemove(STORAGE.draft);
   storageRemove(STORAGE.rapporten);
   storageRemove(STORAGE.headed);
+  logRegels = [];
   logBox.replaceChildren();
+  logTeller.classList.add('hidden');
   logCard.classList.add('hidden');
   showEmpty();
   updateFieldState();

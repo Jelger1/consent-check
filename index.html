@@ -55,17 +55,23 @@
 
   <main class="w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-5 lg:py-4 grid gap-5 lg:gap-6 lg:grid-cols-5 lg:flex-1 lg:min-h-0">
 
-    <!-- Invoer -->
-    <section class="no-print min-w-0 lg:col-span-2 lg:min-h-0 lg:flex lg:flex-col lg:gap-4">
-      <!--
-        Verschijnt als er geen scanner bereikbaar is: op een statische kopie
-        (GitHub Pages), bij een rechtstreeks geopend bestand, of als de lokale
-        server niet draait. app.js vult de inhoud, want wat er moet gebeuren
-        hangt af van wáár de pagina geopend is.
-      -->
-      <div id="backend-melding" class="hidden flex-none"></div>
+    <!--
+      Invoer. Op grote schermen is dit twee delen: een scrollend deel met het
+      formulier, en daaronder het logvenster dat vast in beeld blijft. Anders
+      zakt juist het venster dat laat zien wát er gebeurt onder de schermrand,
+      want de pagina zelf scrollt niet (body staat op h-screen).
+    -->
+    <section id="invoer-kolom" class="no-print min-w-0 lg:col-span-2 lg:min-h-0 lg:flex lg:flex-col lg:gap-4">
+      <div id="invoer-scroll" class="space-y-5 lg:space-y-4 lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
+        <!--
+          Verschijnt als er geen scanner bereikbaar is: op een statische kopie
+          (GitHub Pages), bij een rechtstreeks geopend bestand, of als de lokale
+          server niet draait. app.js vult de inhoud, want wat er moet gebeuren
+          hangt af van wáár de pagina geopend is.
+        -->
+        <div id="backend-melding" class="hidden"></div>
 
-      <form id="scan-form" class="card border-t-[3px] border-t-pm-cyan p-5 sm:p-6 flex flex-col gap-5 flex-none">
+        <form id="scan-form" class="card border-t-[3px] border-t-pm-cyan p-5 sm:p-6 flex flex-col gap-5">
         <div class="sm:hidden">
           <h1 class="text-base font-bold leading-tight">Consent-check</h1>
           <p class="text-xs text-pm-muted">Meet cookies en trackers vóór en ná consent.</p>
@@ -121,20 +127,27 @@
               alles wissen
             </button>
           </div>
-        </div>
-      </form>
+          </div>
+        </form>
+      </div>
 
       <!--
-        Live meekijken met de scanner. Blijft verborgen tot er iets te melden is;
-        app.js zet de flex-klassen erbij, want een `lg:flex` in de HTML zou het
-        `hidden` op grote schermen meteen weer overrulen.
+        Live meekijken met de scanner. Staat buiten het scrollende deel, dus hij
+        blijft onderin beeld staan zolang er gescand wordt. Verborgen tot er
+        iets te melden is; app.js haalt de klasse `hidden` weg.
       -->
-      <div id="log-card" class="card hidden">
+      <div id="log-card" class="card hidden flex-none">
         <div class="card-head">
-          <h2 class="card-title">Wat de scanner doet</h2>
-          <button type="button" id="log-toggle" class="btn btn-quiet btn-xs">verberg</button>
+          <div class="flex items-center gap-2.5 min-w-0">
+            <h2 class="card-title">Wat de scanner doet</h2>
+            <span id="log-teller" class="pill pill-info hidden"></span>
+          </div>
+          <div class="flex items-center gap-2">
+            <button type="button" id="log-kopieer" class="btn btn-quiet btn-xs relative">kopieer</button>
+            <button type="button" id="log-toggle" class="btn btn-quiet btn-xs">verberg</button>
+          </div>
         </div>
-        <div id="log" class="log lg:flex-1 lg:min-h-0" role="log" aria-live="polite"></div>
+        <div id="log" class="log" role="log" aria-live="polite"></div>
       </div>
     </section>
 

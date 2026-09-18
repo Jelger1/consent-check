@@ -80,7 +80,10 @@ interface.
 ## De interface
 
 Links vul je de URL's in, één per regel. Tijdens het scannen zie je in het
-zwarte venster precies wat de scanner doet; rechts verschijnt per URL een kaart:
+zwarte venster precies wat de scanner doet. Dat venster staat vast onderin de
+linkerkolom, zodat het ook op een laptopscherm in beeld blijft; het formulier
+erboven scrolt als het niet past. Met **kopieer** neem je de hele log mee,
+bijvoorbeeld om een fout door te sturen. Rechts verschijnt per URL een kaart:
 
 - drie cijfers bovenaan: cookies, tracking-hosts en requests met een identifier,
   alle drie gemeten vóór consent;

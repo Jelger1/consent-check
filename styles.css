@@ -258,15 +258,38 @@ body { background: #fff; }
 .finding-chevron { flex: none; margin-left: auto; color: #9aa7b1; transition: transform .15s; }
 .finding[open] .finding-chevron { transform: rotate(90deg); }
 
+/**
+ * Het formulier scrollt binnen de linkerkolom, zodat het logvenster eronder in
+ * beeld blijft. Een zichtbare schuifbalk maakt duidelijk dát er meer staat; de
+ * ruimte ernaast blijft gereserveerd, anders verspringt de kaart bij het tonen.
+ */
+#invoer-scroll { scrollbar-gutter: stable; }
+#invoer-scroll::-webkit-scrollbar { width: 8px; }
+#invoer-scroll::-webkit-scrollbar-track { background: transparent; }
+#invoer-scroll::-webkit-scrollbar-thumb { background: #cdd7de; }
+#invoer-scroll::-webkit-scrollbar-thumb:hover { background: #a8b7c2; }
+
 /* --- Log: wat de scanner op dit moment doet --- */
 
+/**
+ * Het venster groeit mee met de regels, maar blijft tussen een leesbare
+ * ondergrens en een bovengrens die het formulier niet van het scherm duwt.
+ * Daarbinnen scrollt het zelf; de kolom eromheen scrollt apart.
+ */
 .log {
   background: #10283c; color: #cfe6f2;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: .75rem; line-height: 1.7;
   padding: .75rem .9rem;
-  max-height: 13rem; overflow-y: auto;
+  min-height: 8.5rem; max-height: 19rem; overflow-y: auto;
+  overscroll-behavior: contain; /* scroll niet door naar de kolom als het venster op de bodem staat */
 }
+
+/* Een donkere schuifbalk, anders staat er een lichte streep in een zwart vlak. */
+.log::-webkit-scrollbar { width: 10px; }
+.log::-webkit-scrollbar-track { background: #0b1d2c; }
+.log::-webkit-scrollbar-thumb { background: #33566e; border: 2px solid #0b1d2c; }
+.log::-webkit-scrollbar-thumb:hover { background: #47708c; }
 .log-regel { display: flex; gap: .6rem; }
 .log-regel.is-url { color: #fff; font-weight: 700; margin-top: .4rem; }
 .log-regel.is-fout { color: #ff9db5; }
