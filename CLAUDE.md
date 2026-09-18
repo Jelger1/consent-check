@@ -2,12 +2,16 @@
 
 Vaste instructieset voor dit project. Lees dit bestand voordat je code wijzigt.
 
+> Dit project hergebruikt het designsysteem van de eerdere interne tools
+> (SEO Content Gap Analyzer en Landingpage & Ads Optimizer): dezelfde
+> `styles.css`-bouwstenen, dezelfde Tailwind-tokens, dezelfde toon.
+
 ---
 
 ## Wat de tool doet
 
-Een Node.js-script met Playwright (Chromium) dat per URL het handmatige
-cookie- en consentonderzoek automatiseert:
+Een lokale tool met Playwright (Chromium) die per URL het handmatige cookie- en
+consentonderzoek automatiseert:
 
 1. ruwe HTML ophalen met een gewone fetch (voor de iframe-vergelijking);
 2. in een schone browsercontext navigeren en minimaal tien seconden wachten tot
@@ -18,18 +22,23 @@ cookie- en consentonderzoek automatiseert:
 5. opnieuw wachten, **meting 2**;
 6. één JSON per URL met `raw_data`, `cmp_info` en `bevindingen` (de acht regels).
 
-De output is voor een LLM die het rapport interpreteert. De tool levert feiten,
-geen oordeel, geen opgemaakte rapportage.
+De JSON is voor een LLM die het rapport interpreteert. De interface toont
+dezelfde feiten leesbaar. De tool velt geen oordeel.
 
 ---
 
 ## Architectuur
 
 Geen framework, geen build-stap, geen dependencies buiten Playwright.
-ES-modules (`"type": "module"`), Node 20+.
+ES-modules (`"type": "module"`), Node 20+. De frontend is vanilla JS met
+Tailwind via de Play CDN, net als de andere interne tools.
 
 | Pad | Rol |
 |---|---|
+| `index.html` | De UI: formulier, logvenster, resultaatkaart, lege staat, skeleton-template. |
+| `styles.css` | Designsysteem van pureminds.nl plus de toolspecifieke bevindingenregels. |
+| `app.js` | Frontend: formulier, NDJSON-stroom lezen, de acht regels renderen, kopiëren en downloaden. |
+| `server/server.js` | Lokale server: statische UI-bestanden en `POST /api/scan` (NDJSON). |
 | `scan.js` | CLI en de lus over de URL's. Exitcode 1 als één scan mislukt. |
 | `lib/scanner.js` | De kernflow per URL. Vangt fouten per stap en bewaart wat al gemeten is. |
 | `lib/browser.js` | Chromium, schone context, netwerk-tracker met fase, CDP-initiators, rustig-netwerk-wachter. |
@@ -40,9 +49,10 @@ ES-modules (`"type": "module"`), Node 20+.
 | `lib/trackers.js` | Alle kennis: tags/hosts, identifier-parameters, cookie-classificatie. |
 | `lib/analyse.js` | De acht regels; puur functies over de metingen. |
 | `lib/report.js` | Rapportstructuur, bestandsnaam, console-samenvatting. |
+| `lib/config.js` | Standaardwachttijden, `config.json`, URL-normalisatie. Gedeeld door CLI en server. |
 | `lib/domain.js`, `lib/util.js` | Eigen domein versus extern, `fail(stap, melding)`, `kort()`. |
 
-Regels:
+Regels voor de meetkant:
 
 - **Meten filtert niets.** Elk request en elke cookie komt in `raw_data`. Labels
   (bekende tag, classificatie) worden toegevoegd, nooit gebruikt om weg te laten.
@@ -64,20 +74,47 @@ Regels:
 - **Fasering via `tracker.fase`.** Requests krijgen de fase op het moment van
   starten; de scanner zet de fase op `na_consent` vlak vóór de consent-aanroep.
 
+Regels voor de interface en de server:
+
+- **De interface toont, hij rekent niet.** Alle cijfers komen uit `bevindingen`;
+  `app.js` telt niets zelf uit. Verandert een regel, dan verandert `lib/analyse.js`.
+- **Alles via `textContent`, nooit `innerHTML`** voor inhoud uit een rapport:
+  die komt van een vreemde website. `innerHTML` alleen voor vaste iconen.
+- **De server serveert een allowlist** (`index.html`, `styles.css`, `app.js`,
+  `assets/`). Voeg je een UI-bestand toe, zet het in die lijst; zo lekt er nooit
+  een configuratie-, rapport- of broncodebestand.
+- **De server luistert op 127.0.0.1.** De tool start een browser en bezoekt
+  websites; dat hoort niemand anders op het netwerk te kunnen aanzwengelen.
+- **Eén scan tegelijk** (`bezet`), anders vertekenen parallelle Chromiums de meting.
+- **NDJSON, geen buffering.** De interface moet kunnen meelezen terwijl de scan
+  loopt; elke gebeurtenis is één regel JSON.
+- **Kleur is een leeswijzer, geen oordeel.** Het regelnummer kleurt naar
+  "aangetroffen / niets gevonden". De tekst eromheen blijft feitelijk.
+
 ---
 
 ## Stijl en conventies
 
-- **Taal: Nederlands**, in de code-commentaren, de console en de JSON-sleutels.
-  De sleutels uit de projectopdracht (`raw_data`, `cmp_info`, `bevindingen`,
-  `detected`, `load_position`, `attributes`, `loaded_via_gtm`) blijven zoals ze
-  zijn; nieuwe sleutels in het Nederlands, snake_case.
+- **Taal: Nederlands**, in de interface, de code-commentaren, de console en de
+  JSON-sleutels. De sleutels uit de projectopdracht (`raw_data`, `cmp_info`,
+  `bevindingen`, `detected`, `load_position`, `attributes`, `loaded_via_gtm`)
+  blijven zoals ze zijn; nieuwe sleutels in het Nederlands, snake_case.
+- **Knoppen en labels in kleine letters** ("start scan", "kopieer json"), zoals
+  op pureminds.nl. Koppen wél met hoofdletter.
+- **Kleuren:** cyaan `#1ab9e2` voor accenten, magenta `#b61b50` voor de
+  hoofdactie, groen `#009670` voor "niets gevonden", oranje `#e0951f` voor "loop
+  na", inkt `#303030` voor tekst. De tokens staan in `styles.css` én in de
+  `tailwind.config` bovenin `index.html`: wijzig je een kleur, wijzig hem op
+  beide plekken.
+- **Gebruik de bestaande klassen** uit `styles.css` voordat je nieuwe CSS
+  schrijft. Toolspecifieke opmaak staat onderaan dat bestand.
 - **Commentaar legt uit waarom**, niet wat. Bestandsheaders beschrijven de rol
   van de module en de keuzes erin.
 - **Constanten bovenaan**, met toelichting bij elke waarde die het meetresultaat
   beïnvloedt (wachttijden, afkaplengtes).
 - **Fouten via `fail(stap, melding)`** uit `lib/util.js`, met een Nederlandse
-  melding die zegt wat er misging én wat er wel is gevonden.
+  melding die zegt wat er misging én wat er wel is gevonden. In de frontend
+  hoort bij elke foutcode een uitleg in `FOUT_UITLEG`.
 - Moderne vanilla JS, 2 spaties, enkele aanhalingstekens, puntkomma's.
 
 ---

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Consent-check &middot; Pure Minds</title>
+  <link rel="icon" type="image/png" href="assets/favicon.png" />
+  <meta name="theme-color" content="#1ab9e2" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,400;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // Huisstijl van pureminds.nl: Open Sans, cyaan, magenta voor de hoofdactie, groen voor "klaar".
+    // Dezelfde kleuren staan als CSS-variabelen in styles.css.
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['"Open Sans"', 'ui-sans-serif', 'system-ui', 'Segoe UI', 'Arial', 'sans-serif'] },
+          colors: {
+            pm: {
+              cyan: '#1ab9e2', tint: '#e8f7fc', blue: '#1b71a8', magenta: '#b61b50',
+              green: '#009670', amber: '#e0951f', ink: '#303030', muted: '#5c6670',
+              line: '#e1e7ec', canvas: '#edf3f7',
+            },
+          },
+        },
+      },
+    };
+  </script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="text-pm-ink antialiased font-sans lg:h-screen lg:flex lg:flex-col lg:overflow-hidden">
+  <div class="bg-deco" aria-hidden="true"></div>
+
+  <!-- Cyaan balk, zoals bovenaan pureminds.nl -->
+  <div class="no-print flex-none bg-pm-cyan px-4 py-1.5 text-center text-xs font-semibold text-pm-ink">
+    <a href="https://www.pureminds.nl/" target="_blank" rel="noopener" class="underline underline-offset-2 hover:no-underline">pure minds</a>
+    <span class="mx-1.5">|</span>interne tool: consent-check<span class="hidden sm:inline"> &middot; wat gebeurt er vóór en ná de cookiemelding?</span>
+  </div>
+
+  <header class="no-print flex-none border-b border-pm-line bg-white/85 backdrop-blur">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-6">
+      <div class="flex items-center gap-4 min-w-0">
+        <img src="assets/pureminds-logo.webp" alt="Pure Minds" width="106" height="39" class="h-[2.4rem] w-auto flex-none" />
+        <span class="hidden sm:block h-9 w-px bg-pm-line" aria-hidden="true"></span>
+        <div class="hidden sm:block min-w-0">
+          <h1 class="text-[15px] font-bold leading-tight tracking-tight">Consent-check</h1>
+          <p class="truncate text-xs text-pm-muted">Meet cookies, trackers en iframes vóór en ná consent.</p>
+        </div>
+      </div>
+      <p class="hidden lg:block flex-none text-[13px] font-semibold">CookieScript<span class="font-normal text-pm-muted"> &middot; andere CMP's volgen later</span></p>
+    </div>
+  </header>
+
+  <main class="w-full max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-5 lg:py-4 grid gap-5 lg:gap-6 lg:grid-cols-5 lg:flex-1 lg:min-h-0">
+
+    <!-- Invoer -->
+    <section class="no-print min-w-0 lg:col-span-2 lg:min-h-0 lg:flex lg:flex-col lg:gap-4">
+      <form id="scan-form" class="card border-t-[3px] border-t-pm-cyan p-5 sm:p-6 flex flex-col gap-5 flex-none">
+        <div class="sm:hidden">
+          <h1 class="text-base font-bold leading-tight">Consent-check</h1>
+          <p class="text-xs text-pm-muted">Meet cookies en trackers vóór en ná consent.</p>
+        </div>
+        <h2 class="text-xl font-bold tracking-tight">Scan een website<span class="text-pm-cyan">.</span></h2>
+
+        <div class="field">
+          <label for="urls" class="field-label">
+            <span class="field-badge hex">
+              <span class="field-num">1</span>
+              <svg class="field-check h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 010 1.4l-8 8a1 1 0 01-1.4 0l-4-4a1 1 0 011.4-1.4L8 12.58l7.3-7.3a1 1 0 011.4 0z" clip-rule="evenodd"/></svg>
+            </span>
+            URL's
+          </label>
+          <textarea id="urls" name="urls" required rows="5" spellcheck="false" autocomplete="off"
+            placeholder="www.klant.nl&#10;www.andereklant.nl/contact" class="textarea"></textarea>
+          <p id="urls-hint" class="field-hint">Eén URL per regel. De tool scant ze één voor één.</p>
+        </div>
+
+        <div class="field">
+          <span class="field-label">
+            <span class="field-badge hex">
+              <span class="field-num">2</span>
+              <svg class="field-check h-3 w-3" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M16.7 5.3a1 1 0 010 1.4l-8 8a1 1 0 01-1.4 0l-4-4a1 1 0 011.4-1.4L8 12.58l7.3-7.3a1 1 0 011.4 0z" clip-rule="evenodd"/></svg>
+            </span>
+            Instellingen
+          </span>
+          <label class="switch">
+            <input type="checkbox" id="headed" />
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+            <span>browser zichtbaar meekijken</span>
+          </label>
+          <p class="field-hint">Standaard draait de browser onzichtbaar op de achtergrond. Aanzetten is handig om te zien wat de tool doet.</p>
+        </div>
+
+        <div class="space-y-2 pt-1">
+          <button type="submit" id="submit-btn" class="btn btn-primary w-full px-5 py-3.5 text-[15px]">
+            <svg id="submit-spinner" class="hidden h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+            </svg>
+            <span id="submit-label">start scan</span>
+            <svg id="submit-arrow" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+          </button>
+          <div class="flex items-center justify-between gap-3 text-xs text-pm-muted">
+            <span id="duur-hint">Ongeveer 30 seconden per URL</span>
+            <button type="button" id="reset-btn"
+              class="whitespace-nowrap px-2 py-1.5 -mr-2 font-semibold text-pm-muted hover:text-pm-magenta transition disabled:opacity-40 disabled:pointer-events-none">
+              alles wissen
+            </button>
+          </div>
+        </div>
+      </form>
+
+      <!--
+        Live meekijken met de scanner. Blijft verborgen tot er iets te melden is;
+        app.js zet de flex-klassen erbij, want een `lg:flex` in de HTML zou het
+        `hidden` op grote schermen meteen weer overrulen.
+      -->
+      <div id="log-card" class="card hidden">
+        <div class="card-head">
+          <h2 class="card-title">Wat de scanner doet</h2>
+          <button type="button" id="log-toggle" class="btn btn-quiet btn-xs">verberg</button>
+        </div>
+        <div id="log" class="log lg:flex-1 lg:min-h-0" role="log" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <!-- Resultaten -->
+    <section class="min-w-0 lg:col-span-3 lg:min-h-0">
+      <div id="result-card" class="card flex flex-col lg:h-full scroll-mt-4">
+        <div class="no-print flex-none">
+          <div class="card-head">
+            <div class="flex items-center gap-2.5">
+              <h2 class="card-title">Bevindingen</h2>
+              <span id="status-badge" role="status" aria-live="polite" class="hidden px-2 py-0.5 text-xs font-semibold tabular-nums"></span>
+            </div>
+            <div id="result-actions" class="relative flex flex-wrap items-center gap-2"></div>
+          </div>
+          <div id="progress-bar" class="progress-track hidden"><span></span></div>
+        </div>
+
+        <!--
+          De lege staat staat bewust in de HTML en niet in een <template>: zo klopt
+          het scherm ook voordat app.js draait. app.js bewaart deze inhoud bij het
+          laden en zet hem terug na "alles wissen".
+        -->
+        <div id="result-scroll" class="bg-pm-canvas p-3 sm:p-5 lg:flex-1 lg:min-h-0 lg:overflow-y-auto">
+          <div id="result-output">
+            <div class="mx-auto max-w-2xl px-1 py-6 sm:py-10">
+              <span class="pill pill-info">nog geen scan</span>
+              <h3 class="mt-3 text-xl font-bold tracking-tight">De meting verschijnt hier<span class="text-pm-cyan">.</span></h3>
+              <p class="mt-2 max-w-md text-sm leading-6 text-pm-muted">
+                De tool bezoekt de site met een schone browser, meet wat er vóór consent gebeurt,
+                accepteert de cookies via de CookieScript-API en meet opnieuw. Je krijgt acht bevindingen
+                plus de volledige JSON voor verdere analyse.
+              </p>
+              <ol class="mt-7 grid gap-3 sm:grid-cols-2">
+                <li class="card flex gap-3 p-4">
+                  <span class="field-badge hex">1</span>
+                  <span><span class="block text-sm font-bold">Cookies vóór consent</span><span class="block text-xs leading-5 text-pm-muted">Zonder de CMP- en sessiecookies.</span></span>
+                </li>
+                <li class="card flex gap-3 p-4">
+                  <span class="field-badge hex">2</span>
+                  <span><span class="block text-sm font-bold">Externe requests</span><span class="block text-xs leading-5 text-pm-muted">Elke host buiten het eigen domein.</span></span>
+                </li>
+                <li class="card flex gap-3 p-4">
+                  <span class="field-badge hex">3</span>
+                  <span><span class="block text-sm font-bold">Identifiers in de payload</span><span class="block text-xs leading-5 text-pm-muted">fbp, cid en gclid reizen ook zonder cookie.</span></span>
+                </li>
+                <li class="card flex gap-3 p-4">
+                  <span class="field-badge hex">4</span>
+                  <span><span class="block text-sm font-bold">Tags ná consent</span><span class="block text-xs leading-5 text-pm-muted">Welke tags blijven stil en zijn mogelijk kapot?</span></span>
+                </li>
+                <li class="card flex gap-3 p-4">
+                  <span class="field-badge hex">5</span>
+                  <span><span class="block text-sm font-bold">Laadpositie CMP</span><span class="block text-xs leading-5 text-pm-muted">In de head, async, of via GTM geïnjecteerd?</span></span>
+                </li>
+                <li class="card flex gap-3 p-4">
+                  <span class="field-badge hex">6</span>
+                  <span><span class="block text-sm font-bold">Meerdere CMP's</span><span class="block text-xs leading-5 text-pm-muted">Draaien er twee banners door elkaar?</span></span>
+                </li>
+                <li class="card flex gap-3 p-4">
+                  <span class="field-badge hex">7</span>
+                  <span><span class="block text-sm font-bold">Niet-Google tags</span><span class="block text-xs leading-5 text-pm-muted">Meta, LinkedIn, Hotjar en TikTok.</span></span>
+                </li>
+                <li class="card flex gap-3 p-4">
+                  <span class="field-badge hex">8</span>
+                  <span><span class="block text-sm font-bold">JS-gegenereerde iframes</span><span class="block text-xs leading-5 text-pm-muted">Embeds die de autoblocking ontwijken.</span></span>
+                </li>
+              </ol>
+              <p class="mt-6 text-xs text-pm-muted">De scan draait lokaal op je eigen machine; er gaat niets naar een externe dienst.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Wachten op de scanner: skelet in plaats van een lege kaart -->
+  <template id="loading-state">
+    <div class="space-y-4" aria-hidden="true">
+      <div class="card p-5">
+        <div class="shimmer h-3 w-40"></div>
+        <div class="mt-4 grid gap-3 sm:grid-cols-3">
+          <div class="shimmer h-16"></div><div class="shimmer h-16"></div><div class="shimmer h-16"></div>
+        </div>
+      </div>
+      <div class="card p-5 space-y-2.5">
+        <div class="shimmer h-3 w-28"></div>
+        <div class="shimmer h-9 w-full"></div>
+        <div class="shimmer h-9 w-full"></div>
+        <div class="shimmer h-9 w-11/12"></div>
+        <div class="shimmer h-9 w-4/5"></div>
+      </div>
+    </div>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>

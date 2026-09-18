@@ -12,30 +12,12 @@
  * één scan mislukt, zodat een pipeline of script dat ziet.
  */
 
-import { readFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { STANDAARD_WACHTTIJDEN, laadConfig, normaliseerUrl } from './lib/config.js';
 import { bouwRapport, samenvatting, schrijfRapport } from './lib/report.js';
 import { scanUrl } from './lib/scanner.js';
 import { seconden } from './lib/util.js';
-
-const PROJECTMAP = dirname(fileURLToPath(import.meta.url));
-
-/**
- * Standaardwachttijden. Vertraagde tags (Meta Pixel via GTM-trigger, lazy
- * embeds) vuren soms pas na een paar seconden; vandaar een minimum van tien
- * seconden vóór consent, los van of het netwerk al rustig is.
- */
-const STANDAARD_WACHTTIJDEN = {
-  minimaal_voor_consent_ms: 10_000,
-  minimaal_na_consent_ms: 8_000,
-  maximaal_ms: 30_000,
-  netwerk_rust_ms: 2_000,
-  navigatie_timeout_ms: 45_000,
-  consent_timeout_ms: 15_000,
-  html_timeout_ms: 20_000,
-};
 
 const HELP = `consent-check: meet per website wat er vóór en ná cookie-consent gebeurt.
 
@@ -99,28 +81,6 @@ async function main() {
 
   console.log(`\nKlaar: ${urls.length - mislukt} van ${urls.length} scan(s) geslaagd.`);
   return mislukt ? 1 : 0;
-}
-
-async function laadConfig(pad) {
-  const bestand = pad ? resolve(pad) : join(PROJECTMAP, 'config.json');
-  try {
-    return JSON.parse(await readFile(bestand, 'utf-8'));
-  } catch (error) {
-    if (!pad && error.code === 'ENOENT') return {};
-    throw new Error(`Configuratie ${bestand} kan niet gelezen worden: ${error.message}`);
-  }
-}
-
-/** Accepteert ook "www.klant.nl": marketeers kopiëren adressen vaak zonder https://. */
-function normaliseerUrl(invoer) {
-  const tekst = String(invoer).trim();
-  const metSchema = /^https?:\/\//i.test(tekst) ? tekst : `https://${tekst}`;
-  try {
-    const url = new URL(metSchema);
-    return { ok: /^https?:$/.test(url.protocol) && !!url.hostname, invoer: tekst, url: url.href };
-  } catch {
-    return { ok: false, invoer: tekst, url: null };
-  }
 }
 
 main()

@@ -11,8 +11,3 @@ output/*
 
 # Lokale back-ups van VS Code (Local History)
 .history/
-
-# Referentieprojecten die alleen als stijlvoorbeeld in deze werkmap staan
-Landingpage-AdsOptimizer/
-Pure-Minds-Post-Maker/
-SEO-contentGap-Analyzer/
