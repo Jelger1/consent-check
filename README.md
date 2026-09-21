@@ -2,7 +2,8 @@
 
 Interne tool van Pure Minds. Je vult één of meer URL's in; de tool bezoekt elke
 site met een schone browser, meet wat er **vóór** consent gebeurt, accepteert de
-cookies via de CookieScript-API en meet opnieuw wat er **ná** consent gebeurt.
+cookies via de API van de cookiebanner en meet opnieuw wat er **ná** consent
+gebeurt. Heeft de site geen banner, dan is dat het antwoord.
 Je ziet de acht bevindingen in de interface en krijgt per URL de volledige JSON
 met de ruwe meting. De tool oordeelt niet: hij levert feiten, die jij of een LLM
 interpreteert.
@@ -111,6 +112,7 @@ in de kaart erbij.
 | Browser opent niet vanzelf | Ga handmatig naar `http://localhost:3000`. Met `PORT=8080 npm start` kies je een andere poort, bijvoorbeeld als 3000 bezet is. |
 | Windows waarschuwt bij `start.cmd` | SmartScreen kent het bestand niet. Kies *Meer informatie → Toch uitvoeren*. Dat gebeurt alleen de eerste keer. |
 | Twee scans van dezelfde site verschillen sterk | Is er in het zichtbare browservenster geklikt? Dan staat er een waarschuwing boven het rapport. Scan opnieuw en laat het venster met rust, of zet de schakelaar uit. |
+| "Geen cookiebanner" terwijl de site er wel een heeft | Kijk naar het aantal requests in meting 1. Zijn dat er maar een paar, dan heeft de site de scanner waarschijnlijk geblokkeerd (botdetectie) en is de pagina nooit echt geladen. Het rapport waarschuwt daar dan voor. |
 
 ## Zonder interface: de CLI
 
@@ -138,7 +140,8 @@ Playwright/Chromium ──▶  navigeren, ≥ 10 s wachten tot het netwerk rusti
                                     │
 meting 1 (vóór consent)  cookies · alle requests · iframes en scripts in de DOM · dataLayer · CMP-status
                                     │
-consent               CookieScript.instance.acceptAllAction()  ──  lukt dit niet, dan faalt de scan hier
+consent               API van de CMP (CookieScript, Cookiebot, Usercentrics, ...), anders de officiële
+                      knop, anders tekstherkenning  ──  geen banner? dan stopt het hier, zonder fout
                                     │
 meting 2 (ná consent)    cookies · nieuwe requests · iframes en scripts in de DOM · dataLayer
                                     │
@@ -157,7 +160,7 @@ LinkedIn, Hotjar, TikTok, YouTube, Microsoft, ...) krijgen alleen een label.
 | 2 | `externe_requests_voor_consent` | Alle hosts buiten het eigen domein, met per host het aantal requests, de herkende tag en de initiator. Onbekende hosts (zoals `*.run.app`) staan er gewoon bij. |
 | 3 | `identifiers_in_payload_voor_consent` | Requests waarvan de URL of POST-body een identifier bevat (`fbp`, `cid`, `gclid`, `sid`, gehashte e-mail, ...), ook als er geen cookie is gezet. |
 | 4 | `ontbrekende_tags_na_consent` + `tag_status` | Per bekende tag: staat hij in HTML/DOM, vuurde hij vóór consent, vuurde hij ná consent, welke cookies horen erbij. Tags die ná consent geen enkel request doen, staan apart. |
-| 5 | `cmp_info` | Hoe CookieScript is ingeladen: `load_position` (head/body), `attributes` (async, defer, type), `synchroon`, `loaded_via_gtm` (gemeten via de request-initiator), welke trackers al onderweg waren toen het CMP-script werd aangevraagd, gated scripts, Consent Mode-instellingen. |
+| 5 | `cmp_info` | Hoe de belangrijkste CMP is ingeladen (`cmp_info.primair`): `load_position` (head/body), `attributes` (async, defer, type), `synchroon`, `loaded_via_gtm` (gemeten via de request-initiator), welke trackers al onderweg waren toen het CMP-script werd aangevraagd, gated scripts, Consent Mode-instellingen. |
 | 6 | `meerdere_cmps_actief` | Alle herkende CMP's (CookieScript, Cookiebot, Complianz, OneTrust, CookieYes, ...) met de signalen waarop de herkenning rust en of ze echt actief zijn. |
 | 7 | `niet_google_tags_gevonden` | Meta, LinkedIn, Hotjar, TikTok en andere niet-Google tags: waar gevonden, of ze vóór consent vuren en of ze via een CMP-attribuut gegate zijn. Deze tags kennen geen Consent Mode en vragen handmatige gating. |
 | 8 | `js_gegenereerde_iframes` | Iframes in de gerenderde DOM die niet in de ruwe HTML staan (of alleen binnen `<noscript>`). Die ontwijken vaak de autoblocking van een CMP. |
@@ -177,11 +180,11 @@ Daarnaast: `nieuwe_cookies_na_consent`, `nieuwe_hosts_na_consent` en
   "raw_data": {
     "voor_consent": { "cookies", "requests", "iframes_html", "iframes_dom", "scripts_html", "scripts_dom",
                       "data_layer", "google_consent_signalen", "cmp_state", "events", "wachttijd" },
-    "consent":      { "methode", "state_voor", "state_na", "cookie", "duur_ms" },
+    "consent":      { "gegeven", "cmps", "methode", "geprobeerd": [ per CMP: methode, gelukt, reden, state ], "cookies", "duur_ms" },
     "na_consent":   { "cookies", "requests", "iframes_dom", "scripts_dom", "data_layer", ... }
   },
-  "cmp_info": { "detected", "load_position", "attributes", "loaded_via_gtm", "synchroon",
-                "cookiescript": { ... }, "cmps": [ ... ], "google_consent_mode": { ... } },
+  "cmp_info": { "detected", "primair", "load_position", "attributes", "loaded_via_gtm", "synchroon",
+                "laadpositie": { ... }, "cmps": [ ... ], "google_consent_mode": { ... } },
   "bevindingen": { ... de acht regels ... }
 }
 ```
@@ -209,8 +212,9 @@ de herkende tag en de initiator (parser of welk script het request startte).
 | `lib/browser.js` | Chromium starten, schone context, netwerk volgen, CDP-initiators, wachten op een rustig netwerk. |
 | `lib/html.js` | Ruwe HTML ophalen en ontleden (scripts, iframes, `<noscript>`, head/body, resource hints). |
 | `lib/snapshot.js` | Cookies uit de context en de DOM-snapshot (iframes, scripts, dataLayer, CMP-status, events). |
-| `lib/cmp/cookiescript.js` | Laadpositie van CookieScript (regel 5) en consent geven via de CookieScript-API. |
-| `lib/cmp/detect.js` | Herkenning van alle CMP's (regel 6). |
+| `lib/cmp/consent.js` | Consent geven: de API-implementaties per CMP, de officiële knoppen en de tekstherkenning als laatste redmiddel. |
+| `lib/cmp/laadpositie.js` | Laadpositie van de belangrijkste CMP (regel 5). |
+| `lib/cmp/detect.js` | Herkenning van alle CMP's (regel 6) en de controle of er al consent was. |
 | `lib/trackers.js` | De kennis: bekende tags en hun hosts, identifier-parameters, cookie-classificatie. |
 | `lib/analyse.js` | De acht regels, op basis van de metingen. |
 | `lib/report.js` | Rapport samenstellen, wegschrijven, console-samenvatting. |
@@ -240,14 +244,25 @@ De poort verander je met `PORT=8080 npm start`.
 
 ## Keuzes en grenzen
 
-- **Alleen CookieScript** in deze versie. Op een site met een ander CMP stopt de
-  scan bij de consent-stap met een duidelijke melding en de CMP's die wél zijn
-  herkend; meting 1 en de CMP-analyse staan dan gewoon in het rapport.
-- **Consent via de API**, niet via knoppen: `CookieScript.instance.acceptAllAction()`.
-  Alleen als die aanroep een fout geeft, probeert de tool de officiële knop
-  `#cookiescript_accept`. Daarna wordt de consent bevestigd op twee plekken
-  (`currentState().action === "accept"` én het cookie `CookieScriptConsent`);
-  anders faalt de scan. Er is geen stille doorgang zonder consent.
+- **Consent via de API van de CMP, in drie trappen.** Eerst de officiële
+  JavaScript-API (CookieScript, Cookiebot, Usercentrics, Complianz, OneTrust,
+  Didomi, Klaro, tarteaucitron, CookieFirst), waarna de tool bij diezelfde API
+  controleert of de acceptatie is vastgelegd. Kent de CMP geen API, dan de
+  officiële accept-knop van die CMP (CookieYes, iubenda, Cookie Notice, Borlabs,
+  Osano, Quantcast, TrustArc, Cookie Information, Termly, Axeptio en meer).
+  Als laatste redmiddel een zichtbare knop met een accept-achtige tekst
+  ("Alles accepteren", "Akkoord", "Accept all") in een element dat over cookies
+  gaat; het rapport zegt er dan bij dat het tekstherkenning was. In `raw_data.consent.geprobeerd`
+  staat per CMP wat er is geprobeerd en wat het opleverde.
+- **Alleen een CMP die zijn banner ook toont, wordt bediend.** Een CMP die wel
+  geladen is maar geen banner laat zien (verkeerde configuratie, of een tweede
+  CMP die door de eerste wordt onderdrukt) kan een bezoeker ook niet accepteren;
+  die staat in het rapport als "niet bediend".
+- **Geen banner is een resultaat, geen fout.** Staat er geen cookiebanner en is
+  er geen CMP, dan levert de scan één meting op met de melding dat er niets te
+  accepteren viel. Alles wat dan vuurt, vuurt altijd. Staat er wél een banner
+  maar lukt accepteren op geen enkele manier, dan faalt de scan met
+  `fout.stap: "consent"` en de lijst van wat er geprobeerd is.
 
   Kijk je mee met een zichtbare browser, dan zie je de banner dus verdwijnen
   zonder dat er geklikt wordt. Dat is bedoeld: de API is betrouwbaarder dan een
@@ -282,13 +297,18 @@ De poort verander je met `PORT=8080 npm start`.
 
 ## Validatie
 
-Getest op de sites van Beweegkliniek Sittard en Rugcentrum Parkstad:
+Getest op de sites van Beweegkliniek Sittard en Rugcentrum Parkstad, plus een
+reeks sites met andere banners:
 
-- **beweegklinieksittard.nl** scant volledig. CookieScript wordt daar via GTM
-  geïnjecteerd (initiator `gtm.js`), naast een Cookiebot-script in de HTML: twee
-  actieve CMP's. Meta Pixel en GA4 vuren vóór consent, met `fbp` en `cid` in
-  de payload.
-- **rugcentrumparkstad.nl** draait op het moment van schrijven alleen Cookiebot.
-  De scan levert meting 1 en de CMP-analyse op en stopt dan met
-  `fout.stap: "consent"`, precies zoals bedoeld. Zodra die site op CookieScript
-  staat, scant hij volledig.
+- **beweegklinieksittard.nl** scant volledig via de CookieScript-API. CookieScript
+  wordt daar via GTM geïnjecteerd (initiator `gtm.js`), naast een Cookiebot-script
+  in de HTML: twee CMP's. Cookiebot toont geen banner en wordt daarom niet
+  bediend; dat staat in het rapport. Meta Pixel en GA4 vuren vóór consent, met
+  `fbp` en `cid` in de payload.
+- **rugcentrumparkstad.nl** (Cookiebot) scant volledig via `Cookiebot.submitCustomConsent`.
+- **eezz.nl** (Wix, met de Usercentrics-banner) scant volledig via `UC_UI.acceptAllConsents`.
+- **complianz.io**, **onetrust.com**, **didomi.io** en **cookiefirst.com** via de
+  API van hun eigen CMP; **cookieyes.com** via de officiële knop.
+- **ah.nl** heeft een eigen banner zonder bekende CMP: geaccepteerd via de knop
+  "Accepteren" op tekstherkenning.
+- **example.com** heeft geen banner: één meting, status geslaagd, geen fout.

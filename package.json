@@ -1,9 +1,9 @@
 {
   "name": "consent-check",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
-  "description": "Interne consent-tool: meet per website wat er vóór en ná cookie-consent gebeurt (cookies, requests, iframes, CMP) en schrijft de feiten naar JSON.",
+  "description": "Interne consent-tool: meet per website wat er vóór en ná cookie-consent gebeurt (cookies, requests, iframes, CMP), accepteert via de API van de cookiebanner en schrijft de feiten naar JSON.",
   "main": "server/server.js",
   "scripts": {
     "setup": "node scripts/start.js",

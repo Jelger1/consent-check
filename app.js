@@ -409,12 +409,20 @@ function renderRapporten() {
 
 function rapportCard(rapport) {
   const geslaagd = rapport.status === 'geslaagd';
+  const consent = rapport.raw_data?.consent || null;
+  // Geen banner is een gewoon resultaat: de scan is klaar, alleen zonder tweede meting.
+  const zonderBanner = geslaagd && !!consent && !consent.gegeven;
   const { wrapper, head } = card(hostVan(rapport.eind_url || rapport.url), rapport.eind_url || rapport.url);
 
-  const badge = el('span', `pill ${geslaagd ? 'pill-good' : 'pill-bad'}`, geslaagd ? 'volledig gescand' : 'mislukt');
+  const badge = el(
+    'span',
+    `pill ${geslaagd ? (zonderBanner ? 'pill-info' : 'pill-good') : 'pill-bad'}`,
+    geslaagd ? (zonderBanner ? 'geen cookiebanner' : 'volledig gescand') : 'mislukt',
+  );
   head.querySelector('div').append(el('div', 'mt-1.5 flex flex-wrap gap-1.5', null));
   const badges = head.querySelector('.mt-1\\.5');
   badges.append(badge, el('span', 'pill', seconden(rapport.duur_ms)));
+  if (consent?.gegeven) badges.append(el('span', 'pill', `consent via ${methodeLabel(consent)}`));
   if (rapport.bestand) badges.append(el('span', 'pill', `opgeslagen: ${rapport.bestand}`));
 
   const acties = el('div', 'flex flex-wrap items-center gap-2');
@@ -427,9 +435,32 @@ function rapportCard(rapport) {
     const box = el('div', 'notice notice-error');
     box.append(el('p', 'notice-title', `Gestopt bij stap "${rapport.fout.stap}"`));
     box.append(el('p', 'mt-1 text-sm leading-6', rapport.fout.melding));
-    box.append(el('p', 'mt-1 text-xs leading-5 text-pm-muted',
-      'Alles wat vóór deze stap gemeten is, staat hieronder en in de JSON. Versie 1 van deze tool bedient alleen CookieScript.'));
+    if (rapport.fout.geprobeerd?.length) {
+      box.append(el('p', 'mt-2 text-xs font-bold uppercase tracking-wide text-pm-muted', 'Geprobeerd'));
+      box.append(pillen(rapport.fout.geprobeerd.map((p) => `${p.cmp}: ${p.reden || p.methode || 'geen resultaat'}`)));
+    }
+    box.append(el('p', 'mt-2 text-xs leading-5 text-pm-muted',
+      "Alles wat vóór deze stap gemeten is, staat hieronder en in de JSON. De tool kent de API's van CookieScript, Cookiebot, Usercentrics, Complianz, OneTrust en meer, en probeert anders de accept-knop."));
     body.append(box);
+  }
+
+  if (zonderBanner) {
+    const box = el('div', 'notice');
+    box.append(el('p', 'notice-title', consent.methode === 'geen_cmp' ? 'Geen cookiebanner aangetroffen' : 'CMP aanwezig, maar geen banner getoond'));
+    box.append(el('p', 'mt-1 text-sm leading-6', consent.reden));
+    box.append(el('p', 'mt-1 text-xs leading-5 text-pm-muted',
+      'Er is daarom één meting. Alles hieronder gebeurt zonder dat een bezoeker iets kiest; een tweede meting "ná consent" is niet van toepassing.'));
+    body.append(box);
+  }
+
+  if (consent?.gegeven) {
+    const overgeslagen = (consent.geprobeerd || []).filter((p) => !p.gelukt && p.reden);
+    if (overgeslagen.length) {
+      const box = el('div', 'notice notice-warn');
+      box.append(el('p', 'notice-title', `${overgeslagen.length === 1 ? 'Eén CMP' : `${overgeslagen.length} CMP's`} niet bediend`));
+      box.append(pillen(overgeslagen.map((p) => `${p.cmp}: ${p.reden}`)));
+      body.append(box);
+    }
   }
 
   for (const waarschuwing of rapport.waarschuwingen || []) {
@@ -484,7 +515,7 @@ function bevindingenLijst(rapport) {
   const cmp = rapport.cmp_info;
   const lijst = el('div');
 
-  lijst.append(regel1(b), regel2(b), regel3(b), regel4(b), regel5(cmp), regel6(b), regel7(b), regel8(b));
+  lijst.append(regel1(b), regel2(b), regel3(b), regel4(b, rapport), regel5(cmp), regel6(b), regel7(b), regel8(b));
 
   if (b.nieuwe_cookies_na_consent) lijst.append(naConsent(b));
   return lijst;
@@ -591,12 +622,18 @@ function regel3(b) {
   return bevinding(3, 'Identifiers in de payload vóór consent', samenvatting, r.gevonden ? 'bad' : 'good', inhoud);
 }
 
-function regel4(b) {
+function regel4(b, rapport) {
   const ontbrekend = b.ontbrekende_tags_na_consent;
   if (!ontbrekend) {
-    return bevinding(4, 'Tags ná consent', 'Niet gemeten: de scan is gestopt vóór meting 2.', 'none', [
-      el('p', null, 'Zonder consent is er geen tweede meting, dus valt niet te zeggen welke tags ná consent vuren.'),
-    ]);
+    const consent = rapport.raw_data?.consent;
+    const zonderBanner = !!consent && !consent.gegeven;
+    return bevinding(4, 'Tags ná consent',
+      zonderBanner ? 'Niet van toepassing: er is geen cookiebanner, dus ook geen consent-stap.' : 'Niet gemeten: de scan is gestopt vóór meting 2.',
+      'none', [
+        el('p', null, zonderBanner
+          ? 'Zonder banner kan een bezoeker niets accepteren of weigeren; wat hier vuurt, vuurt altijd. Zie regel 2, 3 en 7.'
+          : 'Zonder consent is er geen tweede meting, dus valt niet te zeggen welke tags ná consent vuren.'),
+      ]);
   }
 
   const samenvatting = ontbrekend.length
@@ -626,40 +663,45 @@ function regel4(b) {
 }
 
 function regel5(cmp) {
-  const cs = cmp.cookiescript;
-  if (!cs?.detected) {
-    return bevinding(5, 'Laadpositie van de CMP', 'CookieScript is niet op deze pagina aangetroffen.', 'none', [
-      el('p', null, `Wel herkend: ${cmp.detected.length ? cmp.detected.join(', ') : 'geen enkele CMP'}. Versie 1 van deze tool meet alleen de laadpositie van CookieScript.`),
-    ]);
+  const lp = cmp.laadpositie;
+  if (!lp?.detected) {
+    return bevinding(5, 'Laadpositie van de CMP',
+      cmp.detected.length ? `Het laadscript van ${cmp.detected.join(', ')} is niet in de HTML of de DOM teruggevonden.` : 'Geen CMP op deze pagina aangetroffen.',
+      'none', [
+        el('p', null, cmp.detected.length
+          ? 'De CMP is herkend aan zijn requests of globals, maar het script zelf niet; de laadpositie is daarom niet te bepalen.'
+          : 'Zonder CMP is er geen laadpositie te meten.'),
+      ]);
   }
 
-  const via = { gtm: 'via Google Tag Manager geïnjecteerd', html: 'rechtstreeks in de HTML', niet_geladen: 'niet geladen' }[cs.geladen_via] || cs.geladen_via;
-  const samenvatting = `In de ${cs.load_position || 'onbekende positie'}, ${cs.synchroon ? 'synchroon' : cs.attributes.join(' ') || 'zonder attributen'}, ${via}.`;
+  const via = { gtm: 'via Google Tag Manager geïnjecteerd', html: 'rechtstreeks in de HTML', niet_geladen: 'niet geladen' }[lp.geladen_via] || lp.geladen_via;
+  const samenvatting = `${lp.naam}: in de ${lp.load_position || 'onbekende positie'}, ${lp.synchroon ? 'synchroon' : lp.attributes.join(' ') || 'zonder attributen'}, ${via}.`;
 
   const lijst = el('dl', 'kv');
   const rij = (label, waarde) => {
     lijst.append(el('dt', null, label), el('dd', null, waarde));
   };
-  rij('Positie', cs.load_position || 'onbekend');
-  rij('Attributen', cs.attributes.join(', ') || 'geen');
-  rij('Synchroon', cs.synchroon ? 'ja' : 'nee');
-  rij('Via GTM geladen', cs.loaded_via_gtm === null ? 'onbekend' : cs.loaded_via_gtm ? 'ja' : 'nee');
-  if (cs.initiator) rij('Gestart door', `${cs.initiator.type}${cs.initiator.url ? ` · ${cs.initiator.url}` : ''}`);
-  if (cs.request) rij('Script geladen na', seconden(cs.request.tijd_ms));
-  if (cs.geladen_event_na_ms !== null) rij('CMP klaar na', seconden(cs.geladen_event_na_ms));
-  rij('Banner zichtbaar', cs.banner_zichtbaar ? 'ja' : 'nee');
-  if (cs.versie) rij('Versie', cs.versie);
-  if (cs.consent_mode_instelling) rij('Consent Mode', cs.consent_mode_instelling.enabledConsentMode ? 'aan' : 'uit');
+  rij('CMP', lp.naam);
+  rij('Positie', lp.load_position || 'onbekend');
+  rij('Attributen', lp.attributes.join(', ') || 'geen');
+  rij('Synchroon', lp.synchroon ? 'ja' : 'nee');
+  rij('Via GTM geladen', lp.loaded_via_gtm === null ? 'onbekend' : lp.loaded_via_gtm ? 'ja' : 'nee');
+  if (lp.initiator) rij('Gestart door', `${lp.initiator.type}${lp.initiator.url ? ` · ${lp.initiator.url}` : ''}`);
+  if (lp.request) rij('Script geladen na', seconden(lp.request.tijd_ms));
+  if (lp.geladen_event_na_ms !== null) rij('CMP klaar na', seconden(lp.geladen_event_na_ms));
+  if (lp.banner_zichtbaar !== null) rij('Banner zichtbaar', lp.banner_zichtbaar ? 'ja' : 'nee');
+  if (lp.versie) rij('Versie', lp.versie);
+  if (lp.consent_mode_instelling) rij('Consent Mode', lp.consent_mode_instelling.enabledConsentMode ? 'aan' : 'uit');
 
   const inhoud = [lijst];
-  const voor = cs.tracking_requests_tot_cmp_aangevraagd;
+  const voor = lp.tracking_requests_tot_cmp_aangevraagd;
   if (voor?.aantal) {
     const box = el('div', 'notice notice-warn mt-3');
     box.append(el('p', 'notice-title', `${voor.aantal} tracking-request(s) waren al onderweg toen het CMP-script werd opgevraagd`));
     box.append(el('p', 'mt-1 text-sm', `Hosts: ${voor.hosts.join(', ')}.`));
     inhoud.push(box);
   }
-  return bevinding(5, 'Laadpositie van de CMP', samenvatting, cs.loaded_via_gtm || voor?.aantal ? 'mid' : 'none', inhoud);
+  return bevinding(5, 'Laadpositie van de CMP', samenvatting, lp.loaded_via_gtm || voor?.aantal ? 'mid' : 'none', inhoud);
 }
 
 function regel6(b) {
@@ -814,6 +856,28 @@ function inklapbaar(titel, kinderen) {
   return wrapper;
 }
 
+// --- Consent-omschrijving -----------------------------------------------------------
+
+/** "Cookiebot-API", "CookieScript-knop" of de tekst van de knop bij tekstherkenning. */
+function methodeLabel(consent) {
+  const gelukt = (consent.geprobeerd || []).filter((p) => p.gelukt);
+  if (!gelukt.length) return consent.methode || 'onbekend';
+  return gelukt
+    .map((p) => (p.methode === 'knop_tekstherkenning' ? `knop "${p.knop_tekst}"` : p.methode.endsWith('_api') ? `${p.cmp}-API` : `${p.cmp}-knop`))
+    .join(' + ');
+}
+
+function consentLabel(rapport) {
+  const consent = rapport.raw_data?.consent;
+  if (!consent) return 'geen consent-stap (scan gestopt)';
+  if (!consent.gegeven) {
+    return consent.methode === 'geen_cmp'
+      ? 'geen cookiebanner en geen CMP aangetroffen'
+      : `CMP aanwezig (${(consent.cmps_aanwezig || []).join(', ') || 'onbekend'}), maar geen banner getoond`;
+  }
+  return `via ${methodeLabel(consent)}`;
+}
+
 // --- Samenvatting als markdown -----------------------------------------------------
 
 function samenvattingMarkdown(rapport) {
@@ -844,15 +908,16 @@ function samenvattingMarkdown(rapport) {
   const cmp = rapport.cmp_info;
   regels.push(
     `**CMP's actief:** ${cmp.detected.length ? cmp.detected.join(', ') : 'geen'}`,
-    `**CookieScript:** ${cmp.cookiescript?.detected ? `${cmp.load_position || '?'}, ${cmp.attributes.join(' ') || 'geen attributen'}, geladen via ${cmp.cookiescript.geladen_via}` : 'niet aangetroffen'}`,
+    `**Consent:** ${consentLabel(rapport)}`,
+    `**Laadpositie ${cmp.laadpositie?.naam || 'CMP'}:** ${cmp.laadpositie?.detected ? `${cmp.load_position || '?'}, ${cmp.attributes.join(' ') || 'geen attributen'}, geladen via ${cmp.laadpositie.geladen_via}` : 'niet aangetroffen'}`,
     '',
     '## Bevindingen',
     '',
     `1. **Cookies vóór consent:** ${b.cookies_voor_consent.gevonden ? 'ja' : 'nee'} — ${b.cookies_voor_consent.aantal} van ${b.cookies_voor_consent.aantal_totaal}, waarvan ${b.cookies_voor_consent.aantal_third_party} third-party${b.cookies_voor_consent.details.length ? ` (${b.cookies_voor_consent.details.map((c) => c.naam).join(', ')})` : ''}`,
     `2. **Externe requests vóór consent:** ${b.externe_requests_voor_consent.gevonden ? 'ja' : 'nee'} — ${b.externe_requests_voor_consent.aantal_hosts} hosts, ${b.externe_requests_voor_consent.aantal_tracking_hosts} bekende trackers, ${b.externe_requests_voor_consent.aantal_onbekende_hosts} onbekend`,
     `3. **Identifiers in de payload vóór consent:** ${b.identifiers_in_payload_voor_consent.gevonden ? 'ja' : 'nee'} — ${b.identifiers_in_payload_voor_consent.aantal_requests} requests`,
-    `4. **Tags zonder requests ná consent:** ${b.ontbrekende_tags_na_consent ? (b.ontbrekende_tags_na_consent.length ? b.ontbrekende_tags_na_consent.map((t) => t.naam).join(', ') : 'geen') : 'niet gemeten'}`,
-    `5. **Laadpositie CMP:** ${cmp.cookiescript?.detected ? `${cmp.load_position}, ${cmp.attributes.join(' ')}, via ${cmp.cookiescript.geladen_via}` : 'n.v.t.'}`,
+    `4. **Tags zonder requests ná consent:** ${b.ontbrekende_tags_na_consent ? (b.ontbrekende_tags_na_consent.length ? b.ontbrekende_tags_na_consent.map((t) => t.naam).join(', ') : 'geen') : rapport.raw_data?.consent && !rapport.raw_data.consent.gegeven ? 'n.v.t. (geen cookiebanner)' : 'niet gemeten'}`,
+    `5. **Laadpositie CMP:** ${cmp.laadpositie?.detected ? `${cmp.laadpositie.naam}: ${cmp.load_position}, ${cmp.attributes.join(' ')}, via ${cmp.laadpositie.geladen_via}` : 'n.v.t.'}`,
     `6. **Meerdere CMP's actief:** ${b.meerdere_cmps_actief.gevonden ? 'ja' : 'nee'} — ${b.meerdere_cmps_actief.aantal_actief} actief`,
     `7. **Niet-Google tags:** ${b.niet_google_tags_gevonden.length ? b.niet_google_tags_gevonden.map((t) => `${t.naam}${t.vuurt_voor_consent ? ' (vuurt vóór consent)' : ''}`).join(', ') : 'geen'}`,
     `8. **JS-gegenereerde iframes:** ${b.js_gegenereerde_iframes.bepaald ? (b.js_gegenereerde_iframes.gevonden ? `${b.js_gegenereerde_iframes.aantal} gevonden` : 'geen') : 'niet bepaald'}`,

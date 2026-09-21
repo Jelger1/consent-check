@@ -18,7 +18,8 @@ consentonderzoek automatiseert:
    het netwerk rustig is;
 3. **meting 1**: cookies, álle requests, iframes en scripts in de DOM,
    dataLayer, CMP-status;
-4. **consent** geven via `CookieScript.instance.acceptAllAction()`;
+4. **consent** geven via de API van de CMP, anders zijn officiële knop, anders
+   tekstherkenning; geen banner betekent: klaar na meting 1;
 5. opnieuw wachten, **meting 2**;
 6. één JSON per URL met `raw_data`, `cmp_info` en `bevindingen` (de acht regels).
 
@@ -47,8 +48,9 @@ Tailwind via de Play CDN, net als de andere interne tools.
 | `lib/browser.js` | Chromium, schone context, netwerk-tracker met fase, CDP-initiators, rustig-netwerk-wachter. |
 | `lib/html.js` | Ruwe HTML: fetch met time-out, regex-ontleding van scripts/iframes, `<noscript>`, head/body. |
 | `lib/snapshot.js` | `context.cookies()` en de DOM-snapshot die in de pagina draait. |
-| `lib/cmp/cookiescript.js` | Regel 5 (laadpositie) en de consent-stap. |
-| `lib/cmp/detect.js` | Regel 6: signaturen van alle CMP's. |
+| `lib/cmp/consent.js` | De consent-stap: `paginaApi` met alle CMP-API's, de officiële knoppen, de tekstherkenning en de bevestiging. |
+| `lib/cmp/laadpositie.js` | Regel 5: laadpositie van de belangrijkste CMP. |
+| `lib/cmp/detect.js` | Regel 6: signaturen van alle CMP's; `consentAlGegeven()`; `kiesPrimaireCmp()`. |
 | `lib/trackers.js` | Alle kennis: tags/hosts, identifier-parameters, cookie-classificatie. |
 | `lib/analyse.js` | De acht regels; puur functies over de metingen. |
 | `lib/report.js` | Rapportstructuur, bestandsnaam, console-samenvatting. |
@@ -62,10 +64,24 @@ Regels voor de meetkant:
   Onbekende externe hosts zijn juist interessant.
 - **"Bekend" staat op één plek:** `lib/trackers.js`. Nieuwe leverancier, nieuw
   cookie of nieuwe identifier-parameter? Daar toevoegen, nergens anders.
-- **Consent faalt hard.** Geen CookieScript-API, of consent niet bevestigd
-  (state én cookie), dan stopt de scan met `fout.stap: "consent"`. Nooit
-  stilzwijgend doorgaan; nooit CSS-selectors op willekeurige knoppen. De enige
-  toegestane terugvaloptie is de officiële knop `#cookiescript_accept`.
+- **Consent in drie trappen, altijd bevestigd.** Eerst de officiële API van de
+  CMP (in `paginaApi` in `lib/cmp/consent.js`), bevestigd bij diezelfde API.
+  Dan de officiële accept-knop van die CMP, bevestigd doordat de banner
+  verdwijnt of het consentcookie verschijnt. Als laatste de tekstherkenning
+  (`ACCEPT_TEKSTEN`), alleen voor een knop in een element dat over cookies gaat,
+  en in het rapport als zodanig gemarkeerd. Nieuwe CMP? Voeg hem toe aan
+  `STRATEGIEEN` én aan `CMPS` in detect.js; bevestig de API-namen eerst in het
+  echte script van die CMP.
+- **Alleen een getoonde banner wordt bediend.** `getoond()` per CMP, of een
+  zichtbare banner-selector. Een geladen CMP zonder banner staat als
+  "overgeslagen" in `consent.geprobeerd`.
+- **Geen banner is geen fout.** `geefConsent` geeft dan `gegeven: false` met
+  `methode: 'geen_cmp'` of `'geen_banner'` terug; de scanner slaat meting 2 over
+  en de status blijft "geslaagd". Alleen een banner die er wél is maar niet te
+  accepteren valt, geeft `fout.stap: "consent"`, met wat er geprobeerd is.
+- **`voorAccept` zet de fase om.** De scanner geeft een callback mee die
+  `tracker.fase` op `na_consent` zet vlak vóór de eerste echte acceptatie; de
+  inventarisatie ervoor telt dus nog als "vóór consent".
 - **Alles wat tot een fout gemeten is, blijft bewaard.** Een rapport met
   `status: "mislukt"` bevat meting 1 en de CMP-analyse als die er waren.
 - **Elke wachttijd heeft een bovengrens.** Fetch, navigatie, netwerk-rust,
@@ -142,8 +158,10 @@ Regels voor de interface en de server:
 
 ## Grenzen
 
-- **Alleen CookieScript** in versie 1. Andere CMP's worden wel herkend (regel 6)
-  maar niet bediend.
+- **De API's zijn geverifieerd voor** CookieScript, Cookiebot, Usercentrics,
+  Complianz, OneTrust, Didomi en CookieFirst (op de sites van de leveranciers
+  zelf). Klaro en tarteaucitron staan erin op basis van hun documentatie en zijn
+  nog niet tegen een echte site getest.
 - **Geen scroll of interactie**: de meting is de landingssituatie.
 - **Geen conclusies in de code.** Een bevinding is `gevonden: true/false` plus
   details; wat dat betekent, bepaalt de lezer. Voeg geen scores of oordelen toe.
