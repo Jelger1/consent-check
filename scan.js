@@ -12,9 +12,11 @@
  * één scan mislukt, zodat een pipeline of script dat ziet.
  */
 
-import { resolve } from 'node:path';
+import { writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { STANDAARD_WACHTTIJDEN, laadConfig, normaliseerUrl } from './lib/config.js';
+import { maakPdf, pdfBestandsnaam, sluitPdfBrowser } from './lib/pdf.js';
 import { bouwRapport, samenvatting, schrijfRapport } from './lib/report.js';
 import { scanUrl } from './lib/scanner.js';
 import { seconden } from './lib/util.js';
@@ -28,6 +30,8 @@ Opties:
   --config <pad>   configuratiebestand (standaard: config.json naast scan.js)
   --output <map>   uitvoermap voor de JSON-rapporten (standaard: output)
   --headed         browser zichtbaar laten draaien
+  --pdf            ook een PDF-rapport schrijven, in de huisstijl van de site
+  --geen-stealth   de browser zich als automation laten melden (voor vergelijken)
   -h, --help       deze uitleg
 
 Zonder URL's op de commandoregel worden de URL's uit het configuratiebestand gescand.`;
@@ -38,6 +42,8 @@ async function main() {
       config: { type: 'string' },
       output: { type: 'string' },
       headed: { type: 'boolean', default: false },
+      pdf: { type: 'boolean', default: false },
+      'geen-stealth': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
     allowPositionals: true,
@@ -62,8 +68,10 @@ async function main() {
 
   const instellingen = {
     headless: values.headed ? false : config.headless !== false,
+    stealth: values['geen-stealth'] ? false : config.stealth !== false,
     wachttijden: { ...STANDAARD_WACHTTIJDEN, ...(config.wachttijden || {}) },
   };
+  const pdfGewenst = values.pdf || config.pdf === true;
   const outputMap = resolve(values.output || config.output_map || 'output');
 
   console.log(`consent-check: ${urls.length} URL('s), browser ${instellingen.headless ? 'headless' : 'zichtbaar'}, rapporten in ${outputMap}`);
@@ -76,9 +84,22 @@ async function main() {
     const pad = await schrijfRapport(rapport, outputMap);
     console.log(samenvatting(rapport));
     console.log(`  ${rapport.status === 'geslaagd' ? 'OK' : 'MISLUKT'} -> ${pad} (${seconden(scan.duur_ms)})`);
+
+    if (pdfGewenst) {
+      try {
+        const bytes = await maakPdf(rapport);
+        const pdfPad = join(outputMap, pdfBestandsnaam(rapport));
+        await writeFile(pdfPad, bytes);
+        console.log(`  PDF -> ${pdfPad} (${Math.round(bytes.length / 1024)} KB)`);
+      } catch (error) {
+        // Een mislukte PDF mag de scan niet ongeldig maken: de JSON staat er al.
+        console.error(`  ! PDF maken mislukt: ${error.message}`);
+      }
+    }
     if (rapport.status !== 'geslaagd') mislukt += 1;
   }
 
+  await sluitPdfBrowser();
   console.log(`\nKlaar: ${urls.length - mislukt} van ${urls.length} scan(s) geslaagd.`);
   return mislukt ? 1 : 0;
 }

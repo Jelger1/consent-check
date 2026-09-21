@@ -49,6 +49,9 @@ Tailwind via de Play CDN, net als de andere interne tools.
 | `lib/html.js` | Ruwe HTML: fetch met time-out, regex-ontleding van scripts/iframes, `<noscript>`, head/body. |
 | `lib/snapshot.js` | `context.cookies()` en de DOM-snapshot die in de pagina draait. |
 | `lib/cmp/consent.js` | De consent-stap: `paginaApi` met alle CMP-API's, de officiële knoppen, de tekstherkenning en de bevestiging. |
+| `lib/stealth.js` | Browser starten zonder automation-signalen; `herkenBlokkade()` voor blokkade- en challenge-pagina's. |
+| `lib/branding.js` | Kleur en logo van de gescande site, met WCAG-contrasttoets en logohelderheid. |
+| `lib/pdf.js` | HTML-sjabloon + `page.pdf()`. Geen PDF-bibliotheek: Chromium staat er al. |
 | `lib/cmp/laadpositie.js` | Regel 5: laadpositie van de belangrijkste CMP. |
 | `lib/cmp/detect.js` | Regel 6: signaturen van alle CMP's; `consentAlGegeven()`; `kiesPrimaireCmp()`. |
 | `lib/trackers.js` | Alle kennis: tags/hosts, identifier-parameters, cookie-classificatie. |
@@ -92,6 +95,21 @@ Regels voor de meetkant:
   Vang alles af: een rare site mag een meting niet laten crashen.
 - **Fasering via `tracker.fase`.** Requests krijgen de fase op het moment van
   starten; de scanner zet de fase op `na_consent` vlak vóór de consent-aanroep.
+- **Stealth dient de meting, niet de toegang.** Het doel van `lib/stealth.js` is
+  dat tagmanagers en pixels zich normaal gedragen; anders meet de tool te weinig.
+  Blokkades omzeilen is expliciet géén doel: `herkenBlokkade()` meldt ze.
+  Raak alleen signalen aan die aantoonbaar afwijken. `navigator.webdriver` hoort
+  `false` te zijn, niet `undefined`: de property bestaat in elke echte browser.
+- **Zet nooit browser-eigen headers via `extraHTTPHeaders`.** `Sec-Fetch-*` en
+  `Upgrade-Insecure-Requests` staan op de forbidden header list; Chrome weigert
+  die requests dan met ERR_INVALID_ARGUMENT. Gemeten: 75 van de 119 requests
+  mislukten en de CMP laadde niet.
+- **Elke `page.evaluate` kan stuklopen op een navigatie.** Gebruik het patroon
+  uit `api()` en `snapshotDom()`: één keer opnieuw proberen na
+  `waitForLoadState`, daarna pas opgeven.
+- **Eén browser-aanroep waar het kan.** De CMP-inventarisatie gebeurt in één
+  `evaluate` (`actie: 'inventaris'`); losse aanroepen kostten tientallen
+  heen-en-weertjes, precies terwijl de site nog laadt.
 - **Meting 1 moet een nulmeting zijn.** Na meting 1 controleert de scanner met
   `consentAlGegeven()` of er al een keuze vastligt (iemand die in een zichtbaar
   venster klikt). Zo ja, dan komt er een waarschuwing in het rapport: de scan
@@ -162,6 +180,13 @@ Regels voor de interface en de server:
   Complianz, OneTrust, Didomi en CookieFirst (op de sites van de leveranciers
   zelf). Klaro en tarteaucitron staan erin op basis van hun documentatie en zijn
   nog niet tegen een echte site getest.
+- **Een IP-blokkade is een grens, geen bug.** Bol.com blokkeert deze scanner op
+  IP-adres via Akamai. Dat is geen fingerprint-probleem: alle browservarianten
+  krijgen dezelfde 403 vóórdat er JavaScript draait. Bouw daar geen
+  proxy-omweg omheen; de site zegt expliciet nee en biedt een Developer Guide.
+- **De PDF is een Pure Minds-document.** De klantkleur is een accent, geen
+  merkovername: het omslag draagt hun logo en kleur, de voettekst ons logo.
+  Een merkkleur die op wit onder 4,5 contrast scoort, wordt donkerder gemaakt.
 - **Geen scroll of interactie**: de meting is de landingssituatie.
 - **Geen conclusies in de code.** Een bevinding is `gevonden: true/false` plus
   details; wat dat betekent, bepaalt de lezer. Voeg geen scores of oordelen toe.

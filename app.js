@@ -120,6 +120,50 @@ function showTooltip(anchor, message) {
   setTimeout(() => tip.remove(), 1800);
 }
 
+/**
+ * PDF-knop. De server rendert hem met Chromium, dus dat duurt een seconde;
+ * zolang toont de knop dat er iets gebeurt.
+ */
+function pdfButton(rapport) {
+  const button = el('button', 'btn btn-quiet btn-xs relative');
+  button.type = 'button';
+  button.innerHTML =
+    '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg>';
+  const label = el('span', null, 'pdf');
+  button.append(label);
+
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    label.textContent = 'pdf maken…';
+    try {
+      const response = await fetch(api('api/pdf'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(rapport),
+      });
+      if (!response.ok) {
+        let melding = `De server gaf een fout (HTTP ${response.status}).`;
+        try { melding = (await response.json()).error || melding; } catch { /* geen JSON */ }
+        throw new Error(melding);
+      }
+      const blob = await response.blob();
+      const link = el('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `${hostVan(rapport.eind_url || rapport.url)}-consent-check.pdf`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+      showTooltip(button, 'PDF gedownload');
+    } catch (error) {
+      showTooltip(button, error.message.slice(0, 80));
+    } finally {
+      button.disabled = false;
+      label.textContent = 'pdf';
+    }
+  });
+
+  return button;
+}
+
 function downloadButton(rapport) {
   const button = el('button', 'btn btn-quiet btn-xs');
   button.type = 'button';
@@ -426,7 +470,7 @@ function rapportCard(rapport) {
   if (rapport.bestand) badges.append(el('span', 'pill', `opgeslagen: ${rapport.bestand}`));
 
   const acties = el('div', 'flex flex-wrap items-center gap-2');
-  acties.append(downloadButton(rapport), copyButton(() => JSON.stringify(rapport, null, 2), 'json'));
+  acties.append(pdfButton(rapport), downloadButton(rapport), copyButton(() => JSON.stringify(rapport, null, 2), 'json'));
   head.append(acties);
 
   const body = el('div', 'p-4 sm:p-5 space-y-4');

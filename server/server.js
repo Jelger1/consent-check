@@ -5,6 +5,7 @@
    draait hier, want Playwright start een echte Chromium en kan dus niet in de
    browser of op een serverless functie draaien.
 
+   POST /api/pdf     een rapport als body -> het PDF-verslag terug.
    GET  /api/health  -> of de scanner klaarstaat (Playwright en Chromium aanwezig).
                         De interface vraagt dit bij het laden, zodat hij meteen
                         kan uitleggen wat er ontbreekt.
@@ -33,6 +34,8 @@ const PORT = parseInt(process.env.PORT, 10) || 3000;
 const HOST = process.env.HOST || '127.0.0.1';
 const MAX_URLS = 25;
 const MAX_BODY_BYTES = 64 * 1024;
+// Een rapport is 250 tot 400 KB; de PDF-endpoint krijgt er een heel rapport in.
+const MAX_PDF_BODY_BYTES = 12 * 1024 * 1024;
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -248,12 +251,45 @@ async function handleScan(req, res) {
   }
 }
 
-function leesBody(req) {
+/**
+ * POST /api/pdf met een rapport als body -> de PDF als download.
+ *
+ * De interface heeft het rapport al in het geheugen, dus die stuurt het mee.
+ * Zo werkt de knop ook voor een scan die uit localStorage is teruggehaald,
+ * zonder dat de server rapporten hoeft te bewaren of op te zoeken.
+ */
+async function handlePdf(req, res) {
+  let rapport;
+  try {
+    rapport = JSON.parse(await leesBody(req, MAX_PDF_BODY_BYTES));
+  } catch (error) {
+    stuurJson(res, 400, { error: `Ongeldig rapport: ${error.message}`, code: 'ongeldige_aanvraag' });
+    return;
+  }
+  if (!rapport || !rapport.url || !rapport.gescand_op) {
+    stuurJson(res, 400, { error: 'Dit lijkt geen consent-check-rapport.', code: 'ongeldig_rapport' });
+    return;
+  }
+
+  const { maakPdf, pdfBestandsnaam } = await import('../lib/pdf.js');
+  const bytes = await maakPdf(rapport);
+  const naam = pdfBestandsnaam(rapport);
+  console.log(`  PDF gemaakt: ${naam} (${Math.round(bytes.length / 1024)} KB)`);
+  res.writeHead(200, {
+    'Content-Type': 'application/pdf',
+    'Content-Length': bytes.length,
+    'Content-Disposition': `attachment; filename="${naam}"`,
+    'Cache-Control': 'no-store',
+  });
+  res.end(bytes);
+}
+
+function leesBody(req, maxBytes = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     let data = '';
     req.on('data', (stuk) => {
       data += stuk;
-      if (data.length > MAX_BODY_BYTES) {
+      if (data.length > maxBytes) {
         reject(new Error('aanvraag te groot'));
         req.destroy();
       }
@@ -282,6 +318,18 @@ const server = http.createServer((req, res) => {
   // /health is er voor hostingplatforms, /api/health voor de interface.
   if (req.url === '/health' || req.url === '/api/health') {
     stuurJson(res, 200, { ok: true, bezet, ...omgeving, versie: '1.0.0' });
+    return;
+  }
+  if (req.url === '/api/pdf') {
+    if (req.method !== 'POST') {
+      stuurJson(res, 405, { error: 'Alleen POST wordt ondersteund.', code: 'verkeerde_methode' });
+      return;
+    }
+    handlePdf(req, res).catch((error) => {
+      console.error(error);
+      if (!res.headersSent) stuurJson(res, 500, { error: error.message, code: 'pdf_fout' });
+      else res.end();
+    });
     return;
   }
   if (req.url === '/api/scan') {

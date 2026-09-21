@@ -88,6 +88,8 @@ bijvoorbeeld om een fout door te sturen. Rechts verschijnt per URL een kaart:
 
 - drie cijfers bovenaan: cookies, tracking-hosts en requests met een identifier,
   alle drie gemeten vóór consent;
+- knoppen om het rapport als **pdf** te downloaden, in de huisstijl van de
+  gescande site;
 - de acht detectieregels als uitklapbare regels, met de volledige details
   (tabellen met cookies, hosts, tags en iframes) eronder;
 - knoppen om de JSON te downloaden of te kopiëren, en om de samenvatting als
@@ -122,9 +124,11 @@ of een geplande run:
 ```bash
 npm run scan                                   # de URL's uit config.json
 node scan.js https://www.klant.nl              # één of meer URL's
+node scan.js --pdf https://www.klant.nl        # ook een PDF-rapport schrijven
 node scan.js --config klanten.json             # andere configuratie
 node scan.js --output rapporten                # andere uitvoermap
 node scan.js --headed https://www.klant.nl     # browser zichtbaar, handig bij debuggen
+node scan.js --geen-stealth https://...        # browser zich als automation laten melden
 ```
 
 De exitcode is `1` zodra één scan mislukt. Een mislukte scan levert wél een
@@ -213,6 +217,9 @@ de herkende tag en de initiator (parser of welk script het request startte).
 | `lib/html.js` | Ruwe HTML ophalen en ontleden (scripts, iframes, `<noscript>`, head/body, resource hints). |
 | `lib/snapshot.js` | Cookies uit de context en de DOM-snapshot (iframes, scripts, dataLayer, CMP-status, events). |
 | `lib/cmp/consent.js` | Consent geven: de API-implementaties per CMP, de officiële knoppen en de tekstherkenning als laatste redmiddel. |
+| `lib/stealth.js` | De browser laten meten wat een bezoeker krijgt, en blokkadepagina's herkennen. |
+| `lib/branding.js` | Kleur en logo van de gescande site aflezen, met contrasttoets. |
+| `lib/pdf.js` | Het PDF-rapport, gerenderd met Chromium in de huisstijl van de site. |
 | `lib/cmp/laadpositie.js` | Laadpositie van de belangrijkste CMP (regel 5). |
 | `lib/cmp/detect.js` | Herkenning van alle CMP's (regel 6) en de controle of er al consent was. |
 | `lib/trackers.js` | De kennis: bekende tags en hun hosts, identifier-parameters, cookie-classificatie. |
@@ -241,6 +248,33 @@ de herkende tag en de initiator (parser of welk script het request startte).
 | `wachttijden.html_timeout_ms` | `20000` | Time-out voor de ruwe HTML-fetch. |
 
 De poort verander je met `PORT=8080 npm start`.
+
+## Het PDF-rapport
+
+`node scan.js --pdf` schrijft naast de JSON een PDF, en in de interface staat
+per scan een **pdf**-knop. Het document is bedoeld om door te sturen naar een
+klant: een omslag met de bevindingen samengevat, drie kerncijfers, en de acht
+regels met hun tabellen eronder.
+
+De PDF neemt de **huisstijl van de gescande site** over. De accentkleur komt uit
+`meta[name="theme-color"]`, anders uit een CSS-variabele met een merknaam,
+anders uit de kleuren die op de pagina het meest gebruikt worden (knoppen,
+header, links). Het logo wordt uit de pagina gehaald en in het bestand ingesloten,
+zodat de PDF zonder internet klopt.
+
+Twee dingen worden automatisch bijgesteld, omdat een merkkleur zelden voor
+lopende tekst gemaakt is:
+
+- **Contrast.** Elke kleur moet op wit minstens 4,5 halen (de WCAG AA-eis). Het
+  geel van eezz.nl (`#f4b800`, contrast 1,8) wordt daarom `#926e00` met contrast
+  4,7. Onderaan het rapport staat vermeld dat en waarvan is bijgesteld.
+- **Ondergrond van het logo.** Veel merken leveren een wit logo met een
+  doorzichtige achtergrond. De tool meet de gemiddelde helderheid van het logo
+  en zet er een donker vlak achter als het te licht is voor wit papier.
+
+De opmaak zelf blijft Pure Minds: dit is ons rapport over hun site, geen
+nabootsing van hun merk. Vandaar hun logo en kleur op het omslag, ons logo in de
+voettekst.
 
 ## Keuzes en grenzen
 
@@ -277,10 +311,28 @@ De poort verander je met `PORT=8080 npm start`.
   zet `CookieScriptConsent` direct bij het laden, met `action: null`: dat betekent
   "banner getoond, nog niets gekozen". Pas na het accepteren staat er
   `action: "accept"` in. Beide momenten staan in `raw_data` onder `cmp_state`.
-- **Third-party cookies staan aan** en de browser meldt zich als een gewone
-  Chrome-bezoeker (zonder "Headless" in de user-agent), zodat de meting is wat
-  een bezoeker krijgt. `browser.third_party_cookies_waargenomen` laat zien of er
-  daadwerkelijk third-party cookies zijn aangekomen.
+- **Third-party cookies staan aan** en de browser meldt zich niet als
+  automation, zodat de meting is wat een bezoeker krijgt.
+  `browser.third_party_cookies_waargenomen` laat zien of er daadwerkelijk
+  third-party cookies zijn aangekomen.
+- **De browser verbergt dat hij bestuurd wordt** (`lib/stealth.js`): geen
+  "HeadlessChrome" in de user-agent en `navigator.webdriver` op `false` in
+  plaats van `true`. Dat is nodig voor de méting, niet voor de toegang:
+  tagmanagers en pixels onderdrukken zichzelf bij een herkenbare bot, en dan
+  zou de tool minder trackers rapporteren dan er werkelijk vuren. Precies de
+  fout die je bij een consent-audit niet wilt maken. Met `--geen-stealth` kun
+  je het verschil zelf meten.
+- **Blokkades worden gemeld, niet omzeild.** Serveert een site een
+  blokkade- of captcha-pagina, dan staat dat boven het rapport
+  (`blokkade.soort`, `blokkade.beveiliging`) en gaat de rest van het rapport
+  over die pagina. Bol.com blokkeert bijvoorbeeld op IP-adres via Akamai; daar
+  helpt geen enkele browserinstelling tegen, en dat hoort ook zo. Zij bieden een
+  Developer Guide voor geautomatiseerde toegang.
+- **Dialogs, pop-ups en crashes** worden afgevangen en in `storingen` vastgelegd
+  in plaats van de scan te laten stranden. Een `confirm()` wordt weggeklikt en
+  niet bevestigd, want "wilt u de pagina verlaten" mag geen navigatie opleveren.
+- **Maximaal 1500 requests per scan** komen in het rapport. Het rapport vermeldt
+  hoeveel er zijn weggelaten, zodat de totalen blijven kloppen.
 - **Eén scan tegelijk.** Elke scan start een eigen Chromium; parallel draaien
   zou de meting vertekenen. Start je een tweede scan, dan zegt de tool dat hij
   bezet is.
