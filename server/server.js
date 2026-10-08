@@ -18,7 +18,7 @@
    ============================================================================= */
 
 import { spawn } from 'node:child_process';
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import http from 'node:http';
 import { dirname, extname, join, normalize, relative, resolve, sep } from 'node:path';
@@ -29,6 +29,8 @@ import { seconden } from '../lib/util.js';
 
 const PROJECTMAP = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = parseInt(process.env.PORT, 10) || 3000;
+// Uit package.json, zodat /api/health laat zien welke versie er echt draait.
+const VERSIE = JSON.parse(readFileSync(join(PROJECTMAP, 'package.json'), 'utf8')).version;
 // Alleen bereikbaar vanaf deze machine: de tool start een browser en bezoekt
 // websites, dat hoort niemand anders op het netwerk te kunnen aanzwengelen.
 const HOST = process.env.HOST || '127.0.0.1';
@@ -317,7 +319,7 @@ function stuurTekst(res, status, tekst) {
 const server = http.createServer((req, res) => {
   // /health is er voor hostingplatforms, /api/health voor de interface.
   if (req.url === '/health' || req.url === '/api/health') {
-    stuurJson(res, 200, { ok: true, bezet, ...omgeving, versie: '1.0.0' });
+    stuurJson(res, 200, { ok: true, bezet, ...omgeving, versie: VERSIE });
     return;
   }
   if (req.url === '/api/pdf') {

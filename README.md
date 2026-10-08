@@ -88,8 +88,8 @@ bijvoorbeeld om een fout door te sturen. Rechts verschijnt per URL een kaart:
 
 - drie cijfers bovenaan: cookies, tracking-hosts en requests met een identifier,
   alle drie gemeten vóór consent;
-- knoppen om het rapport als **pdf** te downloaden, in de huisstijl van de
-  gescande site;
+- een **pdf**-knop: het volledige rapport als PDF in de huisstijl van Pure
+  Minds, om door te sturen;
 - de acht detectieregels als uitklapbare regels, met de volledige details
   (tabellen met cookies, hosts, tags en iframes) eronder;
 - knoppen om de JSON te downloaden of te kopiëren, en om de samenvatting als
@@ -208,7 +208,7 @@ de herkende tag en de initiator (parser of welk script het request startte).
 | `index.html` | De interface: formulier, logvenster, resultaatkaart, lege staat en het skeleton-template. |
 | `styles.css` | Het designsysteem van pureminds.nl (kaarten, knoppen, velden, tabellen) plus de bevindingenregels van deze tool. |
 | `app.js` | Frontend: formulier, de NDJSON-stroom lezen, de acht regels renderen, kopiëren en downloaden. |
-| `assets/` | Logo en favicon in de huisstijl. |
+| `assets/` | Logo, favicon en Open Sans (`assets/fonts/`, voor de PDF) in de huisstijl. |
 | `server/server.js` | Lokale server: serveert de interface, meldt via `GET /api/health` of alles klaarstaat en draait de scans via `POST /api/scan`. |
 | `Dockerfile`, `render.yaml` | Voor als de tool ergens moet draaien waar collega's hem via een link gebruiken. |
 | `scan.js` | De CLI: configuratie, de lus over de URL's, console-samenvatting, exitcode. |
@@ -218,8 +218,8 @@ de herkende tag en de initiator (parser of welk script het request startte).
 | `lib/snapshot.js` | Cookies uit de context en de DOM-snapshot (iframes, scripts, dataLayer, CMP-status, events). |
 | `lib/cmp/consent.js` | Consent geven: de API-implementaties per CMP, de officiële knoppen en de tekstherkenning als laatste redmiddel. |
 | `lib/stealth.js` | De browser laten meten wat een bezoeker krijgt, en blokkadepagina's herkennen. |
-| `lib/branding.js` | Kleur en logo van de gescande site aflezen, met contrasttoets. |
-| `lib/pdf.js` | Het PDF-rapport, gerenderd met Chromium in de huisstijl van de site. |
+| `lib/branding.js` | Kleur en logo van de gescande site aflezen; de PDF gebruikt het logo. |
+| `lib/pdf.js` | Het PDF-rapport in de huisstijl van Pure Minds, gerenderd met Chromium. |
 | `lib/cmp/laadpositie.js` | Laadpositie van de belangrijkste CMP (regel 5). |
 | `lib/cmp/detect.js` | Herkenning van alle CMP's (regel 6) en de controle of er al consent was. |
 | `lib/trackers.js` | De kennis: bekende tags en hun hosts, identifier-parameters, cookie-classificatie. |
@@ -253,28 +253,31 @@ De poort verander je met `PORT=8080 npm start`.
 
 `node scan.js --pdf` schrijft naast de JSON een PDF, en in de interface staat
 per scan een **pdf**-knop. Het document is bedoeld om door te sturen naar een
-klant: een omslag met de bevindingen samengevat, drie kerncijfers, en de acht
-regels met hun tabellen eronder.
+klant, en volgt dezelfde opmaak als de PDF van de Landingpage & Ads Optimizer.
 
-De PDF neemt de **huisstijl van de gescande site** over. De accentkleur komt uit
-`meta[name="theme-color"]`, anders uit een CSS-variabele met een merknaam,
-anders uit de kleuren die op de pagina het meest gebruikt worden (knoppen,
-header, links). Het logo wordt uit de pagina gehaald en in het bestand ingesloten,
-zodat de PDF zonder internet klopt.
+Wat erin staat:
 
-Twee dingen worden automatisch bijgesteld, omdat een merkkleur zelden voor
-lopende tekst gemaakt is:
+- **voorblad**: logo, datum, de website, de cookiebanner en hoe consent is
+  gegeven, de drie kerncijfers en eventuele meldingen (blokkade, gestopte scan,
+  geen banner, waarschuwingen);
+- **overzicht**: de acht regels in één tabel, met het gekleurde nummer als
+  leeswijzer;
+- **bevindingen in detail**: per regel alles wat de interface toont, zonder
+  afkappen: elke cookie, elke externe host, elke identifier met zijn
+  betekenis, de tagstatus vóór en ná consent, de laadpositie, de CMP-signalen,
+  de iframes en wat consent veranderde;
+- **over de scan**: URL, tijdstip, duur, browser, wachttijden, consentmethode
+  en Google Consent Mode.
 
-- **Contrast.** Elke kleur moet op wit minstens 4,5 halen (de WCAG AA-eis). Het
-  geel van eezz.nl (`#f4b800`, contrast 1,8) wordt daarom `#926e00` met contrast
-  4,7. Onderaan het rapport staat vermeld dat en waarvan is bijgesteld.
-- **Ondergrond van het logo.** Veel merken leveren een wit logo met een
-  doorzichtige achtergrond. De tool meet de gemiddelde helderheid van het logo
-  en zet er een donker vlak achter als het te licht is voor wit papier.
+Alleen lange URL's en waarden worden ingekort, met het aantal weggelaten tekens
+erbij; de JSON blijft de volledige bron.
 
-De opmaak zelf blijft Pure Minds: dit is ons rapport over hun site, geen
-nabootsing van hun merk. Vandaar hun logo en kleur op het omslag, ons logo in de
-voettekst.
+De opmaak is **Pure Minds**: Open Sans, de cyaan-blauwe balk bovenaan elke
+pagina, cyaan tabelkoppen en "pure minds" met paginanummer in de voettekst. Van
+de gescande site komt alleen het logo, klein op het voorblad, zodat de ontvanger
+ziet over welke site het gaat. Een te licht logo (wit op doorzichtig) krijgt een
+donkere ondergrond; `lib/branding.js` meet daarvoor de helderheid. Logo's en
+lettertype zitten in het bestand zelf, zodat de PDF zonder internet klopt.
 
 ## Keuzes en grenzen
 

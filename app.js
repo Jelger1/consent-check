@@ -121,14 +121,17 @@ function showTooltip(anchor, message) {
 }
 
 /**
- * PDF-knop. De server rendert hem met Chromium, dus dat duurt een seconde;
- * zolang toont de knop dat er iets gebeurt.
+ * PDF-knop: het volledige rapport in de huisstijl van Pure Minds, om door te
+ * sturen. De hoofdactie van een rapport, dus magenta, net als in de andere
+ * tools. De server rendert hem met Chromium, dus dat duurt een seconde; zolang
+ * toont de knop dat er iets gebeurt.
  */
 function pdfButton(rapport) {
-  const button = el('button', 'btn btn-quiet btn-xs relative');
+  const button = el('button', 'btn btn-primary btn-xs relative');
   button.type = 'button';
+  button.title = 'Volledig rapport als PDF in de huisstijl van Pure Minds, met alle details per regel';
   button.innerHTML =
-    '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/></svg>';
+    '<svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 21h14"/></svg>';
   const label = el('span', null, 'pdf');
   button.append(label);
 
@@ -136,11 +139,17 @@ function pdfButton(rapport) {
     button.disabled = true;
     label.textContent = 'pdf maken…';
     try {
-      const response = await fetch(api('api/pdf'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(rapport),
-      });
+      let response;
+      try {
+        response = await fetch(api('api/pdf'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(rapport),
+        });
+      } catch {
+        // Zonder server geen Chromium, en dus geen PDF.
+        throw new Error('PDF maken kan alleen als de server draait');
+      }
       if (!response.ok) {
         let melding = `De server gaf een fout (HTTP ${response.status}).`;
         try { melding = (await response.json()).error || melding; } catch { /* geen JSON */ }

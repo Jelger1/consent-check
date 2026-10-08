@@ -30,7 +30,7 @@ Opties:
   --config <pad>   configuratiebestand (standaard: config.json naast scan.js)
   --output <map>   uitvoermap voor de JSON-rapporten (standaard: output)
   --headed         browser zichtbaar laten draaien
-  --pdf            ook een PDF-rapport schrijven, in de huisstijl van de site
+  --pdf            ook een PDF-rapport schrijven, in de huisstijl van Pure Minds
   --geen-stealth   de browser zich als automation laten melden (voor vergelijken)
   -h, --help       deze uitleg
 

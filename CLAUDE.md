@@ -50,8 +50,8 @@ Tailwind via de Play CDN, net als de andere interne tools.
 | `lib/snapshot.js` | `context.cookies()` en de DOM-snapshot die in de pagina draait. |
 | `lib/cmp/consent.js` | De consent-stap: `paginaApi` met alle CMP-API's, de officiële knoppen, de tekstherkenning en de bevestiging. |
 | `lib/stealth.js` | Browser starten zonder automation-signalen; `herkenBlokkade()` voor blokkade- en challenge-pagina's. |
-| `lib/branding.js` | Kleur en logo van de gescande site, met WCAG-contrasttoets en logohelderheid. |
-| `lib/pdf.js` | HTML-sjabloon + `page.pdf()`. Geen PDF-bibliotheek: Chromium staat er al. |
+| `lib/branding.js` | Kleur en logo van de gescande site, met WCAG-contrasttoets en logohelderheid. De PDF gebruikt alleen het logo. |
+| `lib/pdf.js` | HTML-sjabloon + `page.pdf()` in de Pure Minds-opmaak. Geen PDF-bibliotheek: Chromium staat er al. |
 | `lib/cmp/laadpositie.js` | Regel 5: laadpositie van de belangrijkste CMP. |
 | `lib/cmp/detect.js` | Regel 6: signaturen van alle CMP's; `consentAlGegeven()`; `kiesPrimaireCmp()`. |
 | `lib/trackers.js` | Alle kennis: tags/hosts, identifier-parameters, cookie-classificatie. |
@@ -184,9 +184,12 @@ Regels voor de interface en de server:
   IP-adres via Akamai. Dat is geen fingerprint-probleem: alle browservarianten
   krijgen dezelfde 403 vóórdat er JavaScript draait. Bouw daar geen
   proxy-omweg omheen; de site zegt expliciet nee en biedt een Developer Guide.
-- **De PDF is een Pure Minds-document.** De klantkleur is een accent, geen
-  merkovername: het omslag draagt hun logo en kleur, de voettekst ons logo.
-  Een merkkleur die op wit onder 4,5 contrast scoort, wordt donkerder gemaakt.
+- **De PDF is een Pure Minds-document**, met dezelfde opmaak als de PDF van de
+  Landingpage & Ads Optimizer: Open Sans, cyaan-blauwe balk, cyaan tabelkoppen,
+  "pure minds" in de voettekst. Van de klant komt alleen het logo, klein op het
+  voorblad; hun kleur nemen we niet over. De PDF toont alles wat de interface
+  toont, zonder afkappen; verandert een regel in `app.js`, verander hem dan ook
+  in `lib/pdf.js`.
 - **Geen scroll of interactie**: de meting is de landingssituatie.
 - **Geen conclusies in de code.** Een bevinding is `gevonden: true/false` plus
   details; wat dat betekent, bepaalt de lezer. Voeg geen scores of oordelen toe.
