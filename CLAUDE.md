@@ -16,15 +16,22 @@ consentonderzoek automatiseert:
 1. ruwe HTML ophalen met een gewone fetch (voor de iframe-vergelijking);
 2. in een schone browsercontext navigeren en minimaal tien seconden wachten tot
    het netwerk rustig is;
-3. **meting 1**: cookies, álle requests, iframes en scripts in de DOM,
-   dataLayer, CMP-status;
+3. **meting 1**: cookies (met hun herkomst), localStorage/sessionStorage/IndexedDB,
+   álle requests, iframes en scripts in de DOM, dataLayer, CMP-status; daarna de
+   **banner** bekijken zonder te klikken (knoppen, vakjes, bedekking);
 4. **consent** geven via de API van de CMP, anders zijn officiële knop, anders
    tekstherkenning; geen banner betekent: klaar na meting 1;
-5. opnieuw wachten, **meting 2**;
-6. één JSON per URL met `raw_data`, `cmp_info` en `bevindingen` (de acht regels).
+5. opnieuw wachten, **meting 2**; dan **herladen** met consent, **meting 3**, en
+   zoeken naar een manier om de keuze later te wijzigen;
+6. **DNS**: wijzen eigen subdomeinen via een CNAME naar een trackingdienst?
+7. **weigeren** in een tweede, schone browser: alles weigeren, wachten, herladen,
+   en meten wat er dan nog vuurt;
+8. één JSON per URL met `raw_data`, `cmp_info`, `bevindingen` (twaalf regels)
+   en `prioriteiten` (waar de klant moet beginnen).
 
 De JSON is voor een LLM die het rapport interpreteert. De interface toont
-dezelfde feiten leesbaar. De tool velt geen oordeel.
+dezelfde feiten leesbaar. De bevindingen vellen geen oordeel; de prioriteiten
+zijn een aparte, uitlegbare weging bovenop die feiten (zie `lib/prioriteit.js`).
 
 ---
 
@@ -38,9 +45,10 @@ Tailwind via de Play CDN, net als de andere interne tools.
 |---|---|
 | `index.html` | De UI: formulier, logvenster, resultaatkaart, lege staat, skeleton-template. |
 | `styles.css` | Designsysteem van pureminds.nl plus de toolspecifieke bevindingenregels. |
-| `app.js` | Frontend: formulier, NDJSON-stroom lezen, de acht regels renderen, kopiëren en downloaden. |
+| `app.js` | Frontend: formulier, NDJSON-stroom lezen, de detectieregels renderen, kopiëren en downloaden. |
 | `start.cmd`, `start.sh`, `scripts/start.js` | Dubbelklik-start: controleren, installeren waar nodig, server starten. Gebruikt alleen ingebouwde Node-modules, want het draait ook vóór `npm install`. |
 | `scripts/snelkoppeling.js` | Bureaubladicoon op Windows; maakt zelf een .ico uit `assets/favicon.png`. |
+| `scripts/onbekende-hosts.js` | `npm run onbekend`: externe hosts uit alle rapporten die `lib/trackers.js` nog niet kent, meest voorkomend bovenaan. |
 | `server/server.js` | Lokale server: statische UI-bestanden, `GET /api/health` en `POST /api/scan` (NDJSON). |
 | `Dockerfile`, `render.yaml` | Draaien op een hostingplatform, met de officiële Playwright-image. |
 | `scan.js` | CLI en de lus over de URL's. Exitcode 1 als één scan mislukt. |
@@ -55,7 +63,8 @@ Tailwind via de Play CDN, net als de andere interne tools.
 | `lib/cmp/laadpositie.js` | Regel 5: laadpositie van de belangrijkste CMP. |
 | `lib/cmp/detect.js` | Regel 6: signaturen van alle CMP's; `consentAlGegeven()`; `kiesPrimaireCmp()`. |
 | `lib/trackers.js` | Alle kennis: tags/hosts, identifier-parameters, cookie-classificatie. |
-| `lib/analyse.js` | De acht regels; puur functies over de metingen. |
+| `lib/analyse.js` | De detectieregels; puur functies over de metingen. |
+| `lib/prioriteit.js` | De weging in hoog / middel / laag, met per punt waarom, wat te doen, bewijs en bron. Leest alleen `bevindingen`; verandert ze niet. |
 | `lib/report.js` | Rapportstructuur, bestandsnaam, console-samenvatting. |
 | `lib/config.js` | Standaardwachttijden, `config.json`, URL-normalisatie. Gedeeld door CLI en server. |
 | `lib/domain.js`, `lib/util.js` | Eigen domein versus extern, `fail(stap, melding)`, `kort()`. |
@@ -67,14 +76,34 @@ Regels voor de meetkant:
   Onbekende externe hosts zijn juist interessant.
 - **"Bekend" staat op één plek:** `lib/trackers.js`. Nieuwe leverancier, nieuw
   cookie of nieuwe identifier-parameter? Daar toevoegen, nergens anders.
-- **Consent in drie trappen, altijd bevestigd.** Eerst de officiële API van de
-  CMP (in `paginaApi` in `lib/cmp/consent.js`), bevestigd bij diezelfde API.
-  Dan de officiële accept-knop van die CMP, bevestigd doordat de banner
-  verdwijnt of het consentcookie verschijnt. Als laatste de tekstherkenning
-  (`ACCEPT_TEKSTEN`), alleen voor een knop in een element dat over cookies gaat,
-  en in het rapport als zodanig gemarkeerd. Nieuwe CMP? Voeg hem toe aan
-  `STRATEGIEEN` én aan `CMPS` in detect.js; bevestig de API-namen eerst in het
-  echte script van die CMP.
+- **Geen valse beschuldigingen.** Tellen als tracking mag alleen wat aan een
+  bekende tracker is toe te wijzen. Onbekend blijft onbekend (oranje, niet rood);
+  wat níet meetelt, staat er met de reden bij (`uitgesloten`, `niet_meegeteld`).
+  Een algemene parameternaam (`sid`, `uid`, `em`) telt alleen in een request
+  naar een bekende tracker of in een hit met een tracker-protocol. Een nieuwe
+  functionele cookie of `consent_api` alleen toevoegen na controle in de
+  documentatie van het platform of de leverancier.
+- **Accepteren én weigeren in drie trappen, altijd bevestigd.** Eerst de
+  officiële API van de CMP (`accepteer`/`bevestigd` en `weiger`/`geweigerd` in
+  `paginaApi` in `lib/cmp/consent.js`), bevestigd bij diezelfde API. Dan de
+  officiële knop van die CMP (`knoppen` en `weigerknoppen`), bevestigd doordat
+  de banner verdwijnt of het consentcookie verschijnt. Als laatste de
+  tekstherkenning (`ACCEPT_TEKSTEN`, `WEIGER_TEKSTEN`), alleen voor een knop in
+  een element dat over cookies gaat, en in het rapport als zodanig gemarkeerd.
+  Nieuwe CMP? Voeg hem toe aan `STRATEGIEEN` (met weigerknoppen) én aan `CMPS`
+  in detect.js; bevestig de API-namen eerst in het echte script van die CMP,
+  bijvoorbeeld door op de site van de leverancier te kijken welke functies er
+  bestaan.
+- **Weigeren gooit nooit.** `weigerConsent` geeft `gelukt: false` met een reden
+  als het niet lukt; dat is een bevinding (regel 9), geen reden om de scan te
+  stoppen. Het weigeren-scenario draait in een eigen context, na de rest.
+- **De bannerinspectie klikt nergens op.** `inspecteerBanner` leest alleen. De
+  officiële knop van de CMP weegt zwaarder dan de tekst: CookieCode noemt zijn
+  "alles accepteren"-knop bijvoorbeeld "Sluiten".
+- **De hooks in `initScript` mogen een site nooit breken.** De wrappers rond
+  `Storage.setItem` en `document.cookie` vangen alles af en roepen altijd het
+  origineel aan. Ze leggen alleen sleutels en het schrijvende script vast,
+  nooit waarden.
 - **Alleen een getoonde banner wordt bediend.** `getoond()` per CMP, of een
   zichtbare banner-selector. Een geladen CMP zonder banner staat als
   "overgeslagen" in `consent.geprobeerd`.
@@ -178,8 +207,11 @@ Regels voor de interface en de server:
 
 - **De API's zijn geverifieerd voor** CookieScript, Cookiebot, Usercentrics,
   Complianz, OneTrust, Didomi en CookieFirst (op de sites van de leveranciers
-  zelf). Klaro en tarteaucitron staan erin op basis van hun documentatie en zijn
-  nog niet tegen een echte site getest.
+  zelf), en CookieCode (op fitness-seller.nl). De weigerfuncties zijn op
+  dezelfde manier bevestigd (rejectAllAction, denyAllConsents, cmplz_deny_all,
+  RejectAll, setUserDisagreeToAll, declineAllCategories, consentNone). Klaro en
+  tarteaucitron staan erin op basis van hun documentatie en zijn nog niet tegen
+  een echte site getest.
 - **Een IP-blokkade is een grens, geen bug.** Bol.com blokkeert deze scanner op
   IP-adres via Akamai. Dat is geen fingerprint-probleem: alle browservarianten
   krijgen dezelfde 403 vóórdat er JavaScript draait. Bouw daar geen
@@ -190,9 +222,18 @@ Regels voor de interface en de server:
   voorblad; hun kleur nemen we niet over. De PDF toont alles wat de interface
   toont, zonder afkappen; verandert een regel in `app.js`, verander hem dan ook
   in `lib/pdf.js`.
-- **Geen scroll of interactie**: de meting is de landingssituatie.
-- **Geen conclusies in de code.** Een bevinding is `gevonden: true/false` plus
-  details; wat dat betekent, bepaalt de lezer. Voeg geen scores of oordelen toe.
+- **Geen scroll of interactie** buiten de banner: de meting is de
+  landingssituatie, plus herladen. Wat pas bij scrollen of klikken vuurt, zie je niet.
+- **Geen conclusies in de bevindingen.** Een bevinding is `gevonden: true/false`
+  plus details; wat dat betekent, bepaalt de lezer. Voeg daar geen scores of
+  oordelen toe.
+- **De weging staat alleen in `lib/prioriteit.js`.** Drie niveaus (hoog: eerst
+  oplossen, middel: nalopen, laag: ter info), elk punt met waarom, wat te doen,
+  het bewijs uit de meting en een bron. Formuleer "in de regel", nooit
+  "overtreding": het is geen juridisch advies. Een nieuwe regel daar toevoegen,
+  met een bron, en de interface en de PDF tonen hem vanzelf. Consent Mode-pings
+  met status "geweigerd" (G100, asc=D) zijn middel, niet hoog: omstreden, niet
+  verboden.
 - **Geen gevoelige data bewaren.** Cookiewaarden en POST-bodies worden afgekapt;
   de ruwe HTML wordt niet opgeslagen, alleen wat eruit is ontleed.
 - De initiators uit het DevTools Protocol dekken alleen het hoofdframe en

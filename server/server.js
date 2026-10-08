@@ -197,6 +197,7 @@ async function handleScan(req, res) {
   const config = await laadConfig();
   const instellingen = {
     headless: body.headed ? false : config.headless !== false,
+    weigeren: body.weigeren === false ? false : config.weigeren !== false,
     wachttijden: { ...STANDAARD_WACHTTIJDEN, ...(config.wachttijden || {}) },
   };
   const outputMap = resolve(PROJECTMAP, config.output_map || 'output');

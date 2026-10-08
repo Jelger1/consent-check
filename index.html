@@ -100,6 +100,12 @@
             Instellingen
           </span>
           <label class="switch">
+            <input type="checkbox" id="weigeren" checked />
+            <span class="switch-track"><span class="switch-thumb"></span></span>
+            <span>ook weigeren testen</span>
+          </label>
+          <p class="field-hint">Een tweede browser kiest "alles weigeren" en meet wat er daarna nog vuurt. Uitzetten scheelt ongeveer 25 seconden per URL.</p>
+          <label class="switch mt-3">
             <input type="checkbox" id="headed" />
             <span class="switch-track"><span class="switch-thumb"></span></span>
             <span>browser zichtbaar meekijken</span>
@@ -121,7 +127,7 @@
             <svg id="submit-arrow" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
           </button>
           <div class="flex items-center justify-between gap-3 text-xs text-pm-muted">
-            <span id="duur-hint">Ongeveer 30 seconden per URL</span>
+            <span id="duur-hint">Ongeveer een minuut per URL</span>
             <button type="button" id="reset-btn"
               class="whitespace-nowrap px-2 py-1.5 -mr-2 font-semibold text-pm-muted hover:text-pm-magenta transition disabled:opacity-40 disabled:pointer-events-none">
               alles wissen

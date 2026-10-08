@@ -2,10 +2,10 @@
  * Consent-check — frontend
  *
  * Praat met /api/scan en zet de rapporten om in kaarten: per URL de scanmeta,
- * de CMP-informatie en de acht detectieregels als uitklapbare regels.
+ * de CMP-informatie en de twaalf detectieregels als uitklapbare regels.
  *
  * De server stuurt NDJSON terug: één JSON-object per regel, zodat de log
- * meeloopt terwijl de scan draait (een scan duurt een halve minuut per URL).
+ * meeloopt terwijl de scan draait (een scan duurt ongeveer een minuut per URL).
  *
  * Alle tekst uit een rapport komt via textContent in de DOM, nooit via
  * innerHTML: de inhoud komt van een vreemde website.
@@ -15,6 +15,7 @@ const form = document.getElementById('scan-form');
 const urlsField = document.getElementById('urls');
 const urlsHint = document.getElementById('urls-hint');
 const headedField = document.getElementById('headed');
+const weigerenField = document.getElementById('weigeren');
 const submitBtn = document.getElementById('submit-btn');
 const submitLabel = document.getElementById('submit-label');
 const submitSpinner = document.getElementById('submit-spinner');
@@ -41,6 +42,7 @@ const EMPTY_STATE = output.innerHTML; // de lege staat staat in index.html en ko
 const STORAGE = {
   draft: 'consent-check-draft',
   headed: 'consent-check-headed',
+  weigeren: 'consent-check-weigeren',
   rapporten: 'consent-check-rapporten',
 };
 
@@ -227,7 +229,7 @@ form.addEventListener('submit', async (event) => {
   if (!isDesktop()) resultCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   try {
-    await scan(urls, headedField.checked);
+    await scan(urls, headedField.checked, weigerenField.checked);
     const mislukt = rapporten.filter((rapport) => rapport.status !== 'geslaagd').length;
     setStatus(mislukt ? 'error' : 'done', mislukt ? `${mislukt} van ${rapporten.length} mislukt` : 'Klaar');
     storageSet(STORAGE.rapporten, JSON.stringify(rapporten));
@@ -253,13 +255,13 @@ function leesUrls() {
  * Stuurt de URL's naar de server en leest de NDJSON-stroom regel voor regel.
  * Elke regel is een gebeurtenis: start, log, rapport of fout.
  */
-async function scan(urls, headed) {
+async function scan(urls, headed, weigeren) {
   let response;
   try {
     response = await fetch(api('api/scan'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ urls, headed }),
+      body: JSON.stringify({ urls, headed, weigeren }),
     });
   } catch {
     throw Object.assign(new Error('Geen verbinding met de scanner.'), { code: 'offline' });
@@ -522,6 +524,7 @@ function rapportCard(rapport) {
     body.append(box);
   }
 
+  if (rapport.prioriteiten?.bepaald) body.append(prioriteitenBlok(rapport.prioriteiten));
   if (rapport.bevindingen) {
     body.append(tegels(rapport));
     body.append(bevindingenLijst(rapport));
@@ -531,17 +534,111 @@ function rapportCard(rapport) {
   return wrapper;
 }
 
+// --- Waar actie nodig is ----------------------------------------------------------
+
+const NIVEAU = {
+  hoog: { label: 'eerst oplossen', pill: 'pill-bad', rand: '#b61b50' },
+  middel: { label: 'nalopen', pill: 'pill-mid', rand: '#e0951f' },
+  laag: { label: 'ter info', pill: 'pill', rand: '#9aa7b1' },
+};
+
+/**
+ * De weging uit lib/prioriteit.js: wat moet er als eerste gebeuren? De
+ * interface rekent hier niets; niveau, uitleg en bewijs komen uit het rapport.
+ */
+function prioriteitenBlok(p) {
+  const blok = el('section', 'border border-pm-line bg-white');
+  const kop = el('div', 'flex flex-wrap items-center justify-between gap-2 border-b border-pm-line px-4 py-3');
+  kop.append(el('h4', 'text-sm font-bold', 'Waar actie nodig is'));
+  const tellers = el('div', 'flex flex-wrap gap-1.5');
+  for (const niveau of ['hoog', 'middel', 'laag']) {
+    if (p.aantal[niveau]) tellers.append(el('span', `pill ${NIVEAU[niveau].pill}`, `${p.aantal[niveau]} ${NIVEAU[niveau].label}`));
+  }
+  kop.append(tellers);
+  blok.append(kop);
+
+  const lijst = el('div', 'px-4 py-3 space-y-2');
+  for (const tekst of p.voorbehoud) lijst.append(el('p', 'notice notice-warn text-sm', tekst));
+  if (!p.aantal.hoog && !p.aantal.middel) {
+    lijst.append(el('p', 'text-sm', p.punten.length
+      ? 'Geen punten met hoge of middelhoge prioriteit. Hieronder alleen wat ter informatie.'
+      : 'Geen punten gevonden die om actie vragen.'));
+  }
+  for (const punt of p.punten) lijst.append(prioriteitPunt(punt));
+  lijst.append(el('p', 'pt-1 text-xs text-pm-muted',
+    'Weging volgens vaste regels van deze tool, op basis van de metingen hieronder. Geen juridisch advies: de context van de site kan de afweging veranderen.'));
+  blok.append(lijst);
+  return blok;
+}
+
+function prioriteitPunt(punt) {
+  const details = el('details', 'border border-pm-line border-l-4');
+  details.style.borderLeftColor = NIVEAU[punt.niveau].rand;
+  details.open = punt.niveau === 'hoog';
+
+  const summary = el('summary', 'flex cursor-pointer flex-wrap items-center gap-2 px-3 py-2');
+  summary.append(el('span', `pill ${NIVEAU[punt.niveau].pill}`, NIVEAU[punt.niveau].label));
+  summary.append(el('span', 'text-sm font-semibold', punt.titel));
+  details.append(summary);
+
+  const body = el('div', 'space-y-1.5 px-3 pb-3 text-sm leading-6');
+  body.append(el('p', null, punt.waarom));
+  const actie = el('p');
+  actie.append(el('strong', null, 'Wat te doen: '), document.createTextNode(punt.actie));
+  body.append(actie);
+  if (punt.bewijs.length) {
+    const ul = el('ul', 'list-disc pl-5 text-xs text-pm-muted');
+    for (const regel of punt.bewijs) ul.append(el('li', 'break-anywhere', regel));
+    body.append(ul);
+  }
+  const voet = [punt.regels?.length ? `Zie regel ${punt.regels.join(', ')}.` : '', punt.bron || ''].filter(Boolean).join(' ');
+  if (voet) body.append(el('p', 'text-xs text-pm-muted', voet));
+  details.append(body);
+  return details;
+}
+
 /** De drie cijfers die je als eerste wilt zien: cookies, trackers en identifiers vóór consent. */
 function tegels(rapport) {
   const b = rapport.bevindingen;
+  const ck = cookieTelling(b.cookies_voor_consent);
+  const ex = b.externe_requests_voor_consent;
   const grid = el('div', 'grid gap-3 sm:grid-cols-3');
   grid.append(
-    tegel('Cookies', b.cookies_voor_consent.aantal, `van ${b.cookies_voor_consent.aantal_totaal}`, b.cookies_voor_consent.aantal ? 'bad' : 'good'),
-    tegel('Tracking-hosts', b.externe_requests_voor_consent.aantal_tracking_hosts, `van ${b.externe_requests_voor_consent.aantal_hosts} extern`, b.externe_requests_voor_consent.aantal_tracking_hosts ? 'bad' : 'good'),
+    tegel(ck.label, ck.waarde, ck.onder, ck.toon),
+    tegel('Tracking-hosts', ex.aantal_tracking_hosts, `van ${ex.aantal_hosts} extern`, hostToon(ex)),
     tegel('Identifiers', b.identifiers_in_payload_voor_consent.aantal_requests, 'requests', b.identifiers_in_payload_voor_consent.aantal_requests ? 'bad' : 'good'),
   );
   grid.append(el('p', 'sm:col-span-3 text-xs text-pm-muted -mt-1', 'Alle drie gemeten vóórdat er consent is gegeven.'));
   return grid;
+}
+
+/**
+ * Wat de cookietegel toont. Alleen cookies die aan een bekende tracker zijn
+ * toe te wijzen tellen als tracking; onbekende staan als "overig" ernaast en
+ * kleuren hooguit oranje. Een rapport van vóór versie 1.4 kent die
+ * uitsplitsing nog niet; dan blijft het oude totaal staan.
+ */
+function cookieTelling(r) {
+  if (r.aantal_tracking === undefined) {
+    return { label: 'Cookies', waarde: r.aantal, onder: `van ${r.aantal_totaal}`, toon: r.aantal ? 'bad' : 'good' };
+  }
+  return {
+    label: 'Tracking-cookies',
+    waarde: r.aantal_tracking,
+    onder: r.aantal_overig ? `+ ${r.aantal_overig} overig` : `van ${r.aantal_totaal}`,
+    toon: r.aantal_tracking ? 'bad' : r.aantal_overig ? 'mid' : 'good',
+  };
+}
+
+/** Oranje in plaats van rood als élke tracking-host alleen cookieloze Consent Mode-pings (G100, asc=D) kreeg. */
+function hostToon(r) {
+  if (!r.aantal_tracking_hosts) return r.gevonden ? 'mid' : 'good';
+  return r.aantal_tracking_hosts === r.aantal_tracking_hosts_alleen_geweigerd ? 'mid' : 'bad';
+}
+
+/** "Consent Mode G100 ×3: advertentie- en analyse-opslag geweigerd" per consentstatus van een host. */
+function consentModeTekst(consentMode) {
+  return (consentMode || []).map((c) => `Consent Mode ${c.code} ×${c.aantal}: ${c.betekenis}`).join(' · ');
 }
 
 const TONEN = {
@@ -561,7 +658,7 @@ function tegel(label, waarde, onder, toon) {
   return tile;
 }
 
-// --- De acht regels ---------------------------------------------------------------
+// --- De detectieregels ---------------------------------------------------------------
 
 function bevindingenLijst(rapport) {
   const b = rapport.bevindingen;
@@ -569,6 +666,8 @@ function bevindingenLijst(rapport) {
   const lijst = el('div');
 
   lijst.append(regel1(b), regel2(b), regel3(b), regel4(b, rapport), regel5(cmp), regel6(b), regel7(b), regel8(b));
+  // Regels 9 tot en met 12 bestaan pas sinds versie 1.4; oudere rapporten hebben ze niet.
+  if ('tracking_na_weigeren' in b) lijst.append(regel9(b), regel10(b), regel11(b), regel12(b));
 
   if (b.nieuwe_cookies_na_consent) lijst.append(naConsent(b));
   return lijst;
@@ -604,11 +703,17 @@ function bevinding(nummer, titel, samenvatting, toon, inhoud) {
 
 function regel1(b) {
   const r = b.cookies_voor_consent;
-  const samenvatting = r.gevonden
-    ? `${getal(r.aantal)} cookie(s) gezet vóór consent, waarvan ${getal(r.aantal_third_party)} third-party. Niet meegeteld: de cookie van de CMP zelf en functionele cookies op het eigen domein.`
-    : 'Geen cookies vóór consent, afgezien van de cookie van de CMP zelf en functionele cookies op het eigen domein.';
+  const uitgesplitst = r.aantal_tracking !== undefined;
+  const samenvatting = !r.gevonden
+    ? 'Geen cookies vóór consent, afgezien van de cookie van de CMP zelf en functionele cookies op het eigen domein.'
+    : uitgesplitst
+      ? `${getal(r.aantal)} cookie(s) gezet vóór consent: ${getal(r.aantal_tracking)} van een bekende tracker, ${getal(r.aantal_onbekend)} onbekend${r.aantal_functioneel_extern ? `, ${getal(r.aantal_functioneel_extern)} functioneel bij een andere partij` : ''}. ${getal(r.aantal_third_party)} daarvan third-party.`
+      : `${getal(r.aantal)} cookie(s) gezet vóór consent, waarvan ${getal(r.aantal_third_party)} third-party. Niet meegeteld: de cookie van de CMP zelf en functionele cookies op het eigen domein.`;
 
   const inhoud = [];
+  if (uitgesplitst && r.aantal_onbekend) {
+    inhoud.push(el('p', 'mb-2', 'Onbekend betekent: niet aan een tracker toe te wijzen en ook geen bekende functionele cookie. Dat is geen oordeel; controleer waarvoor de site hem gebruikt.'));
+  }
   if (r.details.length) {
     inhoud.push(tabel(
       ['Cookie', 'Domein', 'Partij', 'Duur', 'Soort'],
@@ -617,7 +722,7 @@ function regel1(b) {
         strak(cookie.domein),
         cookie.is_third_party ? 'third-party' : 'eigen domein',
         cookie.is_sessie ? 'sessie' : 'persistent',
-        leesbaar(cookie.tag || cookie.classificatie),
+        cookieSoort(cookie),
       ]),
     ));
   }
@@ -626,26 +731,39 @@ function regel1(b) {
       pillen(r.uitgesloten.map((cookie) => `${cookie.naam} · ${cookie.reden}`)),
     ]));
   }
-  return bevinding(1, 'Cookies vóór consent', samenvatting, r.gevonden ? 'bad' : 'good', inhoud);
+  const toon = uitgesplitst ? (r.aantal_tracking ? 'bad' : r.gevonden ? 'mid' : 'good') : r.gevonden ? 'bad' : 'good';
+  return bevinding(1, 'Cookies vóór consent', samenvatting, toon, inhoud);
+}
+
+/** "Meta Pixel" voor een tracker, de functie voor een functionele cookie, anders "onbekend". */
+function cookieSoort(cookie) {
+  if (cookie.classificatie === 'tracking') return stapel(cookie.tag_naam || leesbaar(cookie.tag), 'tracking');
+  if (cookie.classificatie === 'functioneel') return stapel('functioneel', cookie.functie);
+  return leesbaar(cookie.tag || cookie.classificatie);
 }
 
 function regel2(b) {
   const r = b.externe_requests_voor_consent;
+  const alleenGeweigerd = r.aantal_tracking_hosts_alleen_geweigerd || 0;
   const samenvatting = r.gevonden
-    ? `${getal(r.aantal_requests)} requests naar ${getal(r.aantal_hosts)} externe hosts, waarvan ${getal(r.aantal_tracking_hosts)} bekende trackers en ${getal(r.aantal_onbekende_hosts)} onbekend.`
+    ? `${getal(r.aantal_requests)} requests naar ${getal(r.aantal_hosts)} externe hosts, waarvan ${getal(r.aantal_tracking_hosts)} bekende trackers en ${getal(r.aantal_onbekende_hosts)} onbekend.${alleenGeweigerd ? ` ${getal(alleenGeweigerd)} tracking-host(s) kregen alleen cookieloze Consent Mode-pings (status geweigerd).` : ''}`
     : 'Geen requests naar hosts buiten het eigen domein.';
 
-  const inhoud = r.hosts.length
-    ? [tabel(
+  const inhoud = [];
+  if (r.consent_mode_hits?.aantal) {
+    inhoud.push(el('p', 'mb-2', 'Google- en Microsoft-hits vertellen zelf hoe Consent Mode stond (gcs bij Google, asc bij Microsoft UET). G100 of asc=D betekent: opslag geweigerd, de hit gaat zonder cookies. Contact met het platform is er dan wél.'));
+  }
+  if (r.hosts.length) {
+    inhoud.push(tabel(
       ['Host', 'Requests', 'Herkend als'],
       r.hosts.map((host) => [
         strak(host.host),
         getal(host.aantal),
-        stapel(host.tag_naam || 'onbekend', leesbaar(host.categorie)),
+        stapel(host.tag_naam || 'onbekend', [leesbaar(host.categorie), consentModeTekst(host.consent_mode)].filter(Boolean).join(' · ')),
       ]),
-    )]
-    : [];
-  return bevinding(2, 'Externe requests vóór consent', samenvatting, r.aantal_tracking_hosts ? 'bad' : r.gevonden ? 'mid' : 'good', inhoud);
+    ));
+  }
+  return bevinding(2, 'Externe requests vóór consent', samenvatting, hostToon(r), inhoud);
 }
 
 function regel3(b) {
@@ -660,6 +778,7 @@ function regel3(b) {
     kop.append(el('span', 'pill pill-info', detail.bekende_tag || 'onbekende host'));
     kop.append(el('span', 'pill', detail.host));
     kop.append(el('span', 'pill', `${detail.method} · ${Math.round(detail.tijd_ms / 100) / 10} s`));
+    if (detail.consent_mode) kop.append(el('span', 'pill', `Consent Mode ${detail.consent_mode}`));
     blok.append(kop);
     const lijst = el('ul', 'mt-2 space-y-1');
     for (const identifier of detail.identifiers) {
@@ -672,6 +791,12 @@ function regel3(b) {
     blok.append(el('p', 'mt-2 text-xs text-pm-muted break-anywhere', detail.url));
     return blok;
   });
+  if (r.niet_meegeteld?.length) {
+    inhoud.push(inklapbaar(`${r.niet_meegeteld.length} request(s) met een identifier niet meegeteld`, [
+      el('p', 'mb-2 text-xs text-pm-muted', 'De eigen navigatie van de bezoeker, een algemene parameternaam buiten een bekende tracker, of een waarde uit de landings-URL die naar het eigen domein teruggaat.'),
+      pillen(r.niet_meegeteld.map((n) => `${n.host} · ${n.identifiers.map((i) => i.parameter).join(', ')} · ${n.reden}`)),
+    ]));
+  }
   return bevinding(3, 'Identifiers in de payload vóór consent', samenvatting, r.gevonden ? 'bad' : 'good', inhoud);
 }
 
@@ -695,7 +820,7 @@ function regel4(b, rapport) {
 
   const inhoud = [];
   if (ontbrekend.length) {
-    inhoud.push(el('p', 'mb-2', 'Een tag die ná consent stil blijft, is mogelijk kapot of wordt geblokkeerd. Controleer deze handmatig.'));
+    inhoud.push(el('p', 'mb-2', 'Ná consent geen nieuw request binnen de meettijd. Dat kan betekenen dat de tag wordt tegengehouden, maar ook dat hij vóór consent al alles verstuurde of pas bij een volgende paginaweergave weer vuurt. Controleer deze handmatig.'));
     inhoud.push(pillen(ontbrekend.map((tag) => `${tag.naam} · ${leesbaar(tag.reden)}`), 'pill-mid'));
   }
   if (b.tag_status?.length) {
@@ -786,15 +911,15 @@ function regel7(b) {
 
   const inhoud = [];
   if (tags.length) {
-    inhoud.push(el('p', 'mb-2', 'Deze tags kennen geen Consent Mode. Ze moeten door de CMP zelf worden tegengehouden of handmatig worden gegate.'));
+    inhoud.push(el('p', 'mb-2', 'Deze tags vallen buiten Google Consent Mode. Heeft een tag geen eigen consent-API, of gebruikt de site die niet, dan moet de CMP hem tegenhouden of moet hij handmatig worden gegate.'));
     inhoud.push(tabel(
-      ['Tag', 'Leverancier', 'Vóór consent', 'Ná consent', 'Gegate door CMP'],
+      ['Tag', 'Vóór consent', 'Ná consent', 'Gegate door CMP', 'Eigen consent-API'],
       tags.map((tag) => [
-        tag.naam,
-        leesbaar(tag.leverancier),
+        stapel(tag.naam, leesbaar(tag.leverancier)),
         tag.vuurt_voor_consent ? 'vuurt' : 'stil',
         tag.vuurt_na_consent === null ? 'niet gemeten' : tag.vuurt_na_consent ? 'vuurt' : 'stil',
         tag.gated_via_cmp_attribuut ? 'ja' : 'nee',
+        tag.consent_api || 'geen bekend',
       ]),
     ));
   }
@@ -826,6 +951,107 @@ function regel8(b) {
     }
   }
   return bevinding(8, 'JS-gegenereerde iframes', samenvatting, r.gevonden ? 'mid' : 'good', inhoud);
+}
+
+function regel9(b) {
+  const r = b.tracking_na_weigeren;
+  if (!r) {
+    return bevinding(9, 'Na weigeren', 'Niet gemeten: er was geen banner om te weigeren, of het weigeren-scenario stond uit.', 'none', []);
+  }
+  if (!r.bepaald) {
+    return bevinding(9, 'Na weigeren', `Weigeren lukte niet automatisch: ${r.reden}`, 'mid', [
+      el('p', null, 'Controleer handmatig of weigeren kan, en wat er daarna nog vuurt.'),
+    ]);
+  }
+  const actief = r.tags.filter((t) => t.actief);
+  const samenvatting = actief.length
+    ? `${actief.length} tracker(s) blijven actief nadat in een aparte browser alles is geweigerd (ook na herladen): ${actief.map((t) => t.naam).join(', ')}.`
+    : 'Na "alles weigeren" (ook na herladen) is geen enkele bekende tracker meer actief.';
+  const inhoud = [el('p', 'mb-2', `Geweigerd via ${r.methode}. Pings met de status "geweigerd" en scriptdownloads staan erbij, maar tellen niet als actief.`)];
+  if (r.tags.length) {
+    inhoud.push(tabel(
+      ['Tag', 'Hits', 'Consentstatus', 'Nieuw opgeslagen', 'Actief'],
+      r.tags.map((t) => [
+        t.naam,
+        `${getal(t.hits)}${t.identifiers ? ` (${t.identifiers} met id)` : ''}`,
+        Object.entries(t.consent_mode).map(([code, aantal]) => `${code} ×${aantal}`).join(', ') || 'geen',
+        [...t.nieuwe_cookies, ...t.nieuwe_opslag].join(', ') || '—',
+        t.actief ? 'ja' : 'nee',
+      ]),
+    ));
+  }
+  return bevinding(9, 'Na weigeren', samenvatting, actief.length ? 'bad' : 'good', inhoud);
+}
+
+function regel10(b) {
+  const r = b.cookiebanner;
+  if (!r || !r.gevonden) {
+    return bevinding(10, 'De cookiebanner zelf', r?.fout ? `Niet bekeken: ${r.fout}` : 'Geen cookiebanner gezien om te bekijken.', 'none', []);
+  }
+  const delen = [
+    r.accepteerknop ? `accepteren: "${r.accepteerknop.tekst}"` : 'geen accepteerknop herkend',
+    r.weigerknop_eerste_laag ? `weigeren: "${r.weigerknop.tekst}"` : 'geen weigerknop in de eerste laag',
+  ];
+  if (r.vooraf_aangevinkt?.length) delen.push(`${r.vooraf_aangevinkt.length} vakje(s) vooraf aangevinkt`);
+  if (r.intrekken) delen.push(r.intrekken.gevonden ? `later te wijzigen via ${r.intrekken.hoe}` : 'geen manier gevonden om de keuze later te wijzigen');
+  const misleidend = r.accepteerknop?.officieel && r.accepteerknop_tekst_duidelijk === false;
+  const toon = misleidend || (!r.weigerknop_eerste_laag && !r.instellingenknop) ? 'bad'
+    : (!r.weigerknop_eerste_laag || r.vooraf_aangevinkt?.some((v) => v.zichtbaar) || (r.weiger_t_o_v_accepteer ?? 1) < 0.5 || r.intrekken?.gevonden === false) ? 'mid' : 'good';
+
+  const lijst = el('dl', 'kv');
+  const rij = (label, waarde) => lijst.append(el('dt', null, label), el('dd', null, waarde));
+  if (r.cmp) rij('CMP', r.cmp);
+  rij('Accepteerknop', r.accepteerknop ? `"${r.accepteerknop.tekst}"${r.accepteerknop.officieel ? ' (officiële knop van de CMP)' : ''}` : 'niet herkend');
+  if (r.accepteerknop) rij('Zegt dat hij accepteert', r.accepteerknop_tekst_duidelijk ? 'ja' : 'nee');
+  rij('Weigerknop in eerste laag', r.weigerknop_eerste_laag ? `ja, "${r.weigerknop.tekst}"` : 'nee');
+  if (r.weiger_t_o_v_accepteer !== null) rij('Grootte weigeren t.o.v. accepteren', `${Math.round(r.weiger_t_o_v_accepteer * 100)}%`);
+  rij('Knop naar instellingen', r.instellingenknop ? 'ja' : 'nee');
+  rij('Vooraf aangevinkt', r.vooraf_aangevinkt?.length ? r.vooraf_aangevinkt.map((v) => `${v.label || '(zonder label)'}${v.zichtbaar ? '' : ' (in instellingen)'}`).join(', ') : 'niets');
+  rij('Bedekt van het scherm', `${r.bedekking_procent}%${r.scroll_geblokkeerd ? ', scrollen geblokkeerd' : ''}`);
+  if (r.intrekken) rij('Keuze later wijzigen', r.intrekken.gevonden ? r.intrekken.hoe : 'niet gevonden');
+
+  const inhoud = [lijst];
+  const zichtbaar = (r.knoppen || []).filter((k) => k.zichtbaar);
+  if (zichtbaar.length) {
+    inhoud.push(el('p', 'text-xs font-bold uppercase tracking-wide text-pm-muted mt-3 mb-1', 'Zichtbare knoppen'));
+    inhoud.push(pillen(zichtbaar.map((k) => `${k.tekst} · ${k.soort}`)));
+  }
+  return bevinding(10, 'De cookiebanner zelf', `${delen.join('; ')}.`, toon, inhoud);
+}
+
+function regel11(b) {
+  const r = b.opslag_voor_consent;
+  if (!r) return bevinding(11, 'Opslag buiten cookies', 'Niet gemeten.', 'none', []);
+  const samenvatting = r.aantal
+    ? `${getal(r.aantal)} sleutel(s) in localStorage of sessionStorage vóór consent, waarvan ${getal(r.aantal_tracking)} van een bekende tracker${r.indexeddb?.length ? `; ${r.indexeddb.length} IndexedDB-database(s)` : ''}.`
+    : 'Geen localStorage of sessionStorage gebruikt vóór consent.';
+  const inhoud = [el('p', 'mb-2', 'De toestemmingsplicht geldt voor alle opslag op het apparaat, niet alleen voor cookies. Alleen sleutels, geen waarden.')];
+  if (r.items.length) {
+    inhoud.push(tabel(
+      ['Sleutel', 'Soort', 'Herkend als', 'Geschreven door'],
+      r.items.map((item) => [strak(item.sleutel), item.soort, item.tag_naam || leesbaar(item.classificatie), item.script ? hostVan(item.script) : '—']),
+    ));
+  }
+  if (r.indexeddb?.length) inhoud.push(el('p', 'mt-2 text-xs text-pm-muted', `IndexedDB: ${r.indexeddb.join(', ')}`));
+  return bevinding(11, 'Opslag buiten cookies', samenvatting, r.aantal_tracking ? 'bad' : 'good', inhoud);
+}
+
+function regel12(b) {
+  const r = b.eigen_subdomeinen;
+  if (!r) return bevinding(12, 'Eigen subdomeinen (CNAME)', 'Niet bepaald.', 'none', []);
+  const herkend = r.items.filter((item) => item.herkend_als);
+  const samenvatting = !r.items.length
+    ? 'Geen eigen subdomeinen (naast de pagina zelf) die requests kregen.'
+    : herkend.length
+      ? `${herkend.length} eigen subdomein(en) leiden naar een trackingdienst of server-side tagging: ${herkend.map((item) => item.host).join(', ')}.`
+      : `${r.items.length} eigen subdomein(en) gecontroleerd; geen wijst naar een bekende trackingdienst.`;
+  const inhoud = r.items.length
+    ? [tabel(
+      ['Host', 'CNAME', 'Herkend als', 'Requests vóór consent'],
+      r.items.map((item) => [strak(item.host), item.cname.join(' → ') || '—', item.herkend_als || 'niets bijzonders', getal(item.requests_voor_consent)]),
+    )]
+    : [];
+  return bevinding(12, 'Eigen subdomeinen (CNAME)', samenvatting, herkend.length ? 'mid' : 'good', inhoud);
 }
 
 /** Geen detectieregel, maar wel het antwoord op "wat deed consent nu eigenlijk?". */
@@ -964,16 +1190,23 @@ function samenvattingMarkdown(rapport) {
     `**Consent:** ${consentLabel(rapport)}`,
     `**Laadpositie ${cmp.laadpositie?.naam || 'CMP'}:** ${cmp.laadpositie?.detected ? `${cmp.load_position || '?'}, ${cmp.attributes.join(' ') || 'geen attributen'}, geladen via ${cmp.laadpositie.geladen_via}` : 'niet aangetroffen'}`,
     '',
+    ...prioriteitenMarkdown(rapport.prioriteiten),
     '## Bevindingen',
     '',
-    `1. **Cookies vóór consent:** ${b.cookies_voor_consent.gevonden ? 'ja' : 'nee'} — ${b.cookies_voor_consent.aantal} van ${b.cookies_voor_consent.aantal_totaal}, waarvan ${b.cookies_voor_consent.aantal_third_party} third-party${b.cookies_voor_consent.details.length ? ` (${b.cookies_voor_consent.details.map((c) => c.naam).join(', ')})` : ''}`,
-    `2. **Externe requests vóór consent:** ${b.externe_requests_voor_consent.gevonden ? 'ja' : 'nee'} — ${b.externe_requests_voor_consent.aantal_hosts} hosts, ${b.externe_requests_voor_consent.aantal_tracking_hosts} bekende trackers, ${b.externe_requests_voor_consent.aantal_onbekende_hosts} onbekend`,
+    `1. **Cookies vóór consent:** ${b.cookies_voor_consent.gevonden ? 'ja' : 'nee'} — ${b.cookies_voor_consent.aantal} van ${b.cookies_voor_consent.aantal_totaal}${b.cookies_voor_consent.aantal_tracking !== undefined ? ` (${b.cookies_voor_consent.aantal_tracking} van een bekende tracker, ${b.cookies_voor_consent.aantal_onbekend} onbekend)` : ''}, waarvan ${b.cookies_voor_consent.aantal_third_party} third-party${b.cookies_voor_consent.details.length ? ` (${b.cookies_voor_consent.details.map((c) => c.naam).join(', ')})` : ''}`,
+    `2. **Externe requests vóór consent:** ${b.externe_requests_voor_consent.gevonden ? 'ja' : 'nee'} — ${b.externe_requests_voor_consent.aantal_hosts} hosts, ${b.externe_requests_voor_consent.aantal_tracking_hosts} bekende trackers${b.externe_requests_voor_consent.aantal_tracking_hosts_alleen_geweigerd ? ` (waarvan ${b.externe_requests_voor_consent.aantal_tracking_hosts_alleen_geweigerd} alleen cookieloze Consent Mode-pings)` : ''}, ${b.externe_requests_voor_consent.aantal_onbekende_hosts} onbekend`,
     `3. **Identifiers in de payload vóór consent:** ${b.identifiers_in_payload_voor_consent.gevonden ? 'ja' : 'nee'} — ${b.identifiers_in_payload_voor_consent.aantal_requests} requests`,
     `4. **Tags zonder requests ná consent:** ${b.ontbrekende_tags_na_consent ? (b.ontbrekende_tags_na_consent.length ? b.ontbrekende_tags_na_consent.map((t) => t.naam).join(', ') : 'geen') : rapport.raw_data?.consent && !rapport.raw_data.consent.gegeven ? 'n.v.t. (geen cookiebanner)' : 'niet gemeten'}`,
     `5. **Laadpositie CMP:** ${cmp.laadpositie?.detected ? `${cmp.laadpositie.naam}: ${cmp.load_position}, ${cmp.attributes.join(' ')}, via ${cmp.laadpositie.geladen_via}` : 'n.v.t.'}`,
     `6. **Meerdere CMP's actief:** ${b.meerdere_cmps_actief.gevonden ? 'ja' : 'nee'} — ${b.meerdere_cmps_actief.aantal_actief} actief`,
     `7. **Niet-Google tags:** ${b.niet_google_tags_gevonden.length ? b.niet_google_tags_gevonden.map((t) => `${t.naam}${t.vuurt_voor_consent ? ' (vuurt vóór consent)' : ''}`).join(', ') : 'geen'}`,
     `8. **JS-gegenereerde iframes:** ${b.js_gegenereerde_iframes.bepaald ? (b.js_gegenereerde_iframes.gevonden ? `${b.js_gegenereerde_iframes.aantal} gevonden` : 'geen') : 'niet bepaald'}`,
+    ...('tracking_na_weigeren' in b ? [
+      `9. **Na weigeren:** ${!b.tracking_na_weigeren ? 'niet gemeten' : !b.tracking_na_weigeren.bepaald ? `weigeren niet gelukt (${b.tracking_na_weigeren.reden})` : b.tracking_na_weigeren.tags.filter((t) => t.actief).map((t) => t.naam).join(', ') || 'geen tracker meer actief'}`,
+      `10. **De cookiebanner zelf:** ${b.cookiebanner?.gevonden ? `accepteren "${b.cookiebanner.accepteerknop?.tekst || '?'}", ${b.cookiebanner.weigerknop_eerste_laag ? `weigeren "${b.cookiebanner.weigerknop.tekst}"` : 'geen weigerknop in de eerste laag'}${b.cookiebanner.vooraf_aangevinkt?.length ? `, ${b.cookiebanner.vooraf_aangevinkt.length} vakje(s) vooraf aan` : ''}${b.cookiebanner.intrekken ? `, intrekken: ${b.cookiebanner.intrekken.gevonden ? b.cookiebanner.intrekken.hoe : 'niet gevonden'}` : ''}` : 'geen banner gezien'}`,
+      `11. **Opslag buiten cookies:** ${b.opslag_voor_consent ? `${b.opslag_voor_consent.aantal} sleutel(s), ${b.opslag_voor_consent.aantal_tracking} van een tracker` : 'niet gemeten'}`,
+      `12. **Eigen subdomeinen:** ${b.eigen_subdomeinen?.items?.filter((i) => i.herkend_als).map((i) => `${i.host} (${i.herkend_als})`).join(', ') || 'niets bijzonders'}`,
+    ] : []),
   );
 
   if (b.nieuwe_cookies_na_consent) {
@@ -984,6 +1217,18 @@ function samenvattingMarkdown(rapport) {
   }
 
   return regels.join('\n');
+}
+
+function prioriteitenMarkdown(p) {
+  if (!p?.bepaald) return [];
+  const regels = ['## Waar actie nodig is', ''];
+  if (!p.punten.length) regels.push('Geen punten gevonden die om actie vragen.');
+  for (const punt of p.punten) {
+    regels.push(`- **[${NIVEAU[punt.niveau].label}] ${punt.titel}.** ${punt.waarom} *Wat te doen:* ${punt.actie}`);
+    for (const bewijs of punt.bewijs) regels.push(`  - ${bewijs}`);
+  }
+  regels.push('', '_Weging volgens vaste regels van de tool; geen juridisch advies._', '');
+  return regels;
 }
 
 // --- Staten ------------------------------------------------------------------------
@@ -1026,7 +1271,7 @@ function toonBezig({ url, nummer, totaal }) {
   adres.dataset.url = '';
   blok.append(adres);
   blok.append(el('p', 'mt-0.5 text-xs text-pm-muted',
-    'Meten vóór consent, daarna accepteren en opnieuw meten. Links zie je regel voor regel wat er gebeurt.'));
+    'Meten vóór consent, accepteren, opnieuw meten en herladen; daarna in een tweede browser weigeren en meten. Links zie je regel voor regel wat er gebeurt.'));
   output.prepend(blok);
 }
 
@@ -1067,6 +1312,7 @@ function setLoading(loading, aantalUrls = 0) {
   resetBtn.disabled = loading;
   urlsField.disabled = loading;
   headedField.disabled = loading;
+  weigerenField.disabled = loading;
   submitSpinner.classList.toggle('hidden', !loading);
   submitArrow.classList.toggle('hidden', loading);
 
@@ -1129,8 +1375,9 @@ function updateFieldState() {
   // Zonder scanner staat daar de uitleg uit toonBackendMelding; die niet overschrijven.
   if (!backendKlaar) return;
 
-  // Ruwe schatting op basis van de gemeten scanduur: een halve minuut per URL.
-  const totaalSeconden = Math.max(urls.length, 1) * 30;
+  // Ruwe schatting op basis van de gemeten scanduur: ruim een halve minuut per
+  // URL, plus ongeveer 25 seconden als het weigeren-scenario aan staat.
+  const totaalSeconden = Math.max(urls.length, 1) * (weigerenField.checked ? 60 : 35);
   const minuten = Math.round(totaalSeconden / 60);
   duurHint.textContent = totaalSeconden < 60
     ? `Ongeveer ${totaalSeconden} seconden in totaal`
@@ -1141,16 +1388,19 @@ form.addEventListener('input', () => {
   updateFieldState();
   storageSet(STORAGE.draft, urlsField.value);
   storageSet(STORAGE.headed, headedField.checked ? '1' : '');
+  storageSet(STORAGE.weigeren, weigerenField.checked ? '1' : '0');
 });
 
 resetBtn.addEventListener('click', () => {
   if (rapporten.length && !confirm('Invoer én resultaten wissen?')) return;
   urlsField.value = '';
   headedField.checked = false;
+  weigerenField.checked = true;
   rapporten = [];
   storageRemove(STORAGE.draft);
   storageRemove(STORAGE.rapporten);
   storageRemove(STORAGE.headed);
+  storageRemove(STORAGE.weigeren);
   logRegels = [];
   logBox.replaceChildren();
   logTeller.classList.add('hidden');
@@ -1160,7 +1410,7 @@ resetBtn.addEventListener('click', () => {
 });
 
 // --- Opslag ---------------------------------------------------------------------------
-// Invoer en de laatste rapporten overleven een refresh: een scan kost een halve minuut per URL.
+// Invoer en de laatste rapporten overleven een refresh: een scan kost ongeveer een minuut per URL.
 
 function storageGet(sleutel) {
   try { return localStorage.getItem(sleutel); } catch { return null; }
@@ -1177,6 +1427,7 @@ function storageRemove(sleutel) {
 (function herstel() {
   urlsField.value = storageGet(STORAGE.draft) || '';
   headedField.checked = storageGet(STORAGE.headed) === '1';
+  weigerenField.checked = storageGet(STORAGE.weigeren) !== '0';
   updateFieldState();
   controleerBackend();
 

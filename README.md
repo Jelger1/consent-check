@@ -90,7 +90,7 @@ bijvoorbeeld om een fout door te sturen. Rechts verschijnt per URL een kaart:
   alle drie gemeten vóór consent;
 - een **pdf**-knop: het volledige rapport als PDF in de huisstijl van Pure
   Minds, om door te sturen;
-- de acht detectieregels als uitklapbare regels, met de volledige details
+- de twaalf detectieregels als uitklapbare regels, met de volledige details
   (tabellen met cookies, hosts, tags en iframes) eronder;
 - knoppen om de JSON te downloaden of te kopiëren, en om de samenvatting als
   markdown te kopiëren, bijvoorbeeld om aan een LLM of een collega te geven.
@@ -149,28 +149,66 @@ consent               API van de CMP (CookieScript, Cookiebot, Usercentrics, ...
                                     │
 meting 2 (ná consent)    cookies · nieuwe requests · iframes en scripts in de DOM · dataLayer
                                     │
-JSON                  raw_data (beide metingen) + cmp_info + bevindingen (de 8 regels)
+meting 3 (herladen)      dezelfde pagina opnieuw, mét consent · daarna: is de keuze nog te wijzigen?
+                                    │
+DNS                   wijzen eigen subdomeinen via een CNAME naar een trackingdienst?
+                                    │
+weigeren              tweede schone browser · alles weigeren · wachten · herladen · meten
+                                    │
+JSON                  raw_data (alle metingen) + cmp_info + bevindingen (12 regels) + prioriteiten
 ```
 
 Tijdens het meten wordt **niets weggefilterd**: elk request en elke cookie staat
 in het rapport, ook van onbekende hosts. Bekende trackers (Google, Meta,
 LinkedIn, Hotjar, TikTok, YouTube, Microsoft, ...) krijgen alleen een label.
 
-## De acht detectieregels
+## De detectieregels
 
 | # | Sleutel in `bevindingen` | Wat er in staat |
 |---|---|---|
-| 1 | `cookies_voor_consent` | Cookies vóór consent, zonder de cookie van de CMP zelf en zonder bekende functionele sessiecookies op het eigen domein. Onbekende cookies tellen wél mee, en een functionele cookie op een ánder domein ook: die bewijst dat er contact met die partij was. |
-| 2 | `externe_requests_voor_consent` | Alle hosts buiten het eigen domein, met per host het aantal requests, de herkende tag en de initiator. Onbekende hosts (zoals `*.run.app`) staan er gewoon bij. |
-| 3 | `identifiers_in_payload_voor_consent` | Requests waarvan de URL of POST-body een identifier bevat (`fbp`, `cid`, `gclid`, `sid`, gehashte e-mail, ...), ook als er geen cookie is gezet. |
-| 4 | `ontbrekende_tags_na_consent` + `tag_status` | Per bekende tag: staat hij in HTML/DOM, vuurde hij vóór consent, vuurde hij ná consent, welke cookies horen erbij. Tags die ná consent geen enkel request doen, staan apart. |
+| 1 | `cookies_voor_consent` | Cookies vóór consent, zonder de cookie van de CMP zelf en zonder bekende functionele cookies op het eigen domein (CMS-sessie, webshop, Wix, loadbalancer, bot-beveiliging; de soort staat bij de reden). Uitgesplitst in `aantal_tracking` (aan een bekende tracker toe te wijzen, op naam of op het domein van de cookie), `aantal_onbekend` en `aantal_functioneel_extern`. Alleen de eerste telt als tracking; onbekend is geen oordeel. Een functionele cookie op een ánder domein telt mee, behalve als die partij zelf geen tracker is (de CMP, een CDN). |
+| 2 | `externe_requests_voor_consent` | Alle hosts buiten het eigen domein, met per host het aantal requests, de herkende tag en de initiator. Onbekende hosts (zoals `*.run.app`) staan er gewoon bij. Per host ook `consent_mode`: de `gcs`-waarden van de Google-hits (G100 = alles geweigerd, een cookieloze ping). `aantal_tracking_hosts_alleen_geweigerd` telt de tracking-hosts die niets anders kregen. |
+| 3 | `identifiers_in_payload_voor_consent` | Requests waarvan de URL of POST-body een identifier bevat (`fbp`, `cid`, `gclid`, `sid`, gehashte e-mail, ...), ook als er geen cookie is gezet. Niet meegeteld, maar wel vermeld in `niet_meegeteld` met reden: de navigatie van de bezoeker zelf (een click-id in de landings-URL), algemene namen als `sid` of `uid` buiten een bekende tracker of tracker-protocol, en waarden uit de landings-URL die naar het eigen domein teruggaan. |
+| 4 | `ontbrekende_tags_na_consent` + `tag_status` | Per bekende tag: staat hij in HTML/DOM, vuurde hij vóór consent, vuurde hij ná consent, welke cookies horen erbij. Tags die ná consent geen enkel request doen, staan apart; laadscripts zoals gtag.js niet, want die worden maar één keer opgehaald. |
 | 5 | `cmp_info` | Hoe de belangrijkste CMP is ingeladen (`cmp_info.primair`): `load_position` (head/body), `attributes` (async, defer, type), `synchroon`, `loaded_via_gtm` (gemeten via de request-initiator), welke trackers al onderweg waren toen het CMP-script werd aangevraagd, gated scripts, Consent Mode-instellingen. |
 | 6 | `meerdere_cmps_actief` | Alle herkende CMP's (CookieScript, Cookiebot, Complianz, OneTrust, CookieYes, ...) met de signalen waarop de herkenning rust en of ze echt actief zijn. |
-| 7 | `niet_google_tags_gevonden` | Meta, LinkedIn, Hotjar, TikTok en andere niet-Google tags: waar gevonden, of ze vóór consent vuren en of ze via een CMP-attribuut gegate zijn. Deze tags kennen geen Consent Mode en vragen handmatige gating. |
+| 7 | `niet_google_tags_gevonden` | Meta, LinkedIn, Hotjar, TikTok en andere niet-Google tags: waar gevonden, of ze vóór consent vuren, of ze via een CMP-attribuut gegate zijn en welke eigen consent-API de leverancier biedt (`consent_api`, bijvoorbeeld UET Consent Mode of de Clarity Consent API). Ze vallen buiten Google Consent Mode. |
 | 8 | `js_gegenereerde_iframes` | Iframes in de gerenderde DOM die niet in de ruwe HTML staan (of alleen binnen `<noscript>`). Die ontwijken vaak de autoblocking van een CMP. |
+
+Sinds versie 1.4 komen daar vier bij:
+
+| # | Sleutel in `bevindingen` | Wat er in staat |
+|---|---|---|
+| 9 | `tracking_na_weigeren` | In een tweede, schone browser is "alles weigeren" gekozen (via de API van de CMP, zijn weigerknop of tekstherkenning). Per tracker wat er daarna, ook na herladen, nog gebeurde: hits, consentstatus, nieuwe cookies en opslag, identifiers. |
+| 10 | `cookiebanner` | De banner zoals hij als eerste verschijnt: de accepteerknop (en of die zegt dat hij accepteert), een weigerknop in de eerste laag, de verhouding in grootte, vooraf aangevinkte vakjes, hoeveel van het scherm hij bedekt, of scrollen geblokkeerd is, en of de keuze later nog te wijzigen is. |
+| 11 | `opslag_voor_consent` | localStorage, sessionStorage en IndexedDB vóór consent, met per sleutel wie hem schreef. Alleen sleutels, geen waarden. |
+| 12 | `eigen_subdomeinen` | Eigen subdomeinen die requests kregen, met hun CNAME-keten. Wijst er een naar een trackingdienst of een server-side tagging-server, of ontvangt hij hits zoals die, dan staat dat erbij. |
+
+Regel 4 rekent sinds 1.4 ook de herlaadmeting mee: een tag die pas bij een
+nieuwe paginaweergave vuurt, staat niet meer onterecht als "stil". En van elke
+cookie staat de **herkomst** in het rapport: gezet door een server (`Set-Cookie`,
+met de host) of door een script (`document.cookie`, met de script-URL). Een
+onbekende cookie die aantoonbaar door een trackerscript is gezet, telt daarmee
+als tracking.
 
 Daarnaast: `nieuwe_cookies_na_consent`, `nieuwe_hosts_na_consent` en
 `identifiers_in_payload_na_consent`, zodat de lezer ziet wat consent veranderde.
+
+### Waar actie nodig is (`prioriteiten`)
+
+Bovenop de feiten weegt `lib/prioriteit.js` wat de klant als eerste moet doen,
+in drie niveaus:
+
+| Niveau | Label | Voorbeelden |
+|---|---|---|
+| hoog | eerst oplossen | Advertentie- of marketingtrackers die vóór consent vuren, cookies zetten of een id meesturen; sessie-opnames en heatmaps vóór consent; Consent Mode die vóór consent al op "toegestaan" staat (G111, asc=G); geen cookiebanner terwijl er trackers draaien. |
+| middel | nalopen | Bezoekersstatistieken vóór consent (kan vrijgesteld zijn), een trackerscript dat wel geladen is maar niets verstuurde, alleen cookieloze pings met status "geweigerd" (G100, asc=D; omstreden), Google-tags zonder Consent Mode, video en chat van derden, een id naar een onbekende partij, onbekende cookies van derden, een CMP die ná de trackers laadt, meerdere CMP's. |
+| laag | ter info | Onbekende cookies op het eigen domein, tags die ook ná consent niets doen, een banner die niet automatisch te accepteren was. |
+
+Elk punt heeft een uitleg, wat te doen, het bewijs uit de meting en een bron
+(Telecommunicatiewet art. 11.7a, EDPB-richtsnoeren 2/2023, de AP). Het is een
+weging volgens vaste regels, geen juridisch advies. Het blok staat bovenaan in
+de interface, direct na het voorblad in de PDF en in de kopieerbare samenvatting.
 
 ## Het rapport
 
@@ -189,7 +227,7 @@ Daarnaast: `nieuwe_cookies_na_consent`, `nieuwe_hosts_na_consent` en
   },
   "cmp_info": { "detected", "primair", "load_position", "attributes", "loaded_via_gtm", "synchroon",
                 "laadpositie": { ... }, "cmps": [ ... ], "google_consent_mode": { ... } },
-  "bevindingen": { ... de acht regels ... }
+  "bevindingen": { ... de detectieregels ... }
 }
 ```
 
@@ -205,9 +243,10 @@ de herkende tag en de initiator (parser of welk script het request startte).
 | `start.cmd`, `start.sh` | Dubbelklikken om te starten: regelen zelf de installatie en starten de server. |
 | `scripts/start.js` | Wat die twee aanroepen: controleert, installeert waar nodig en start de server. |
 | `scripts/snelkoppeling.js` | Zet een icoon op het bureaublad dat `start.cmd` opent (Windows). |
+| `scripts/onbekende-hosts.js` | `npm run onbekend`: externe hosts uit alle rapporten die de bibliotheek nog niet kent. Zo zie je wat er in `lib/trackers.js` bij moet. |
 | `index.html` | De interface: formulier, logvenster, resultaatkaart, lege staat en het skeleton-template. |
 | `styles.css` | Het designsysteem van pureminds.nl (kaarten, knoppen, velden, tabellen) plus de bevindingenregels van deze tool. |
-| `app.js` | Frontend: formulier, de NDJSON-stroom lezen, de acht regels renderen, kopiëren en downloaden. |
+| `app.js` | Frontend: formulier, de NDJSON-stroom lezen, de detectieregels renderen, kopiëren en downloaden. |
 | `assets/` | Logo, favicon en Open Sans (`assets/fonts/`, voor de PDF) in de huisstijl. |
 | `server/server.js` | Lokale server: serveert de interface, meldt via `GET /api/health` of alles klaarstaat en draait de scans via `POST /api/scan`. |
 | `Dockerfile`, `render.yaml` | Voor als de tool ergens moet draaien waar collega's hem via een link gebruiken. |
@@ -223,7 +262,8 @@ de herkende tag en de initiator (parser of welk script het request startte).
 | `lib/cmp/laadpositie.js` | Laadpositie van de belangrijkste CMP (regel 5). |
 | `lib/cmp/detect.js` | Herkenning van alle CMP's (regel 6) en de controle of er al consent was. |
 | `lib/trackers.js` | De kennis: bekende tags en hun hosts, identifier-parameters, cookie-classificatie. |
-| `lib/analyse.js` | De acht regels, op basis van de metingen. |
+| `lib/analyse.js` | De detectieregels, op basis van de metingen. |
+| `lib/prioriteit.js` | Waar actie nodig is: de weging in hoog, middel en laag. |
 | `lib/report.js` | Rapport samenstellen, wegschrijven, console-samenvatting. |
 | `lib/config.js` | Standaardwachttijden, `config.json` lezen, URL's opschonen. Gedeeld door CLI en server. |
 | `lib/domain.js`, `lib/util.js` | Domeinvergelijking (eigen domein versus extern), kleine helpers. |
@@ -239,8 +279,10 @@ de herkende tag en de initiator (parser of welk script het request startte).
 | `urls` | `[]` | De URL's die `npm run scan` zonder argumenten scant. |
 | `output_map` | `output` | Map voor de JSON-rapporten. |
 | `headless` | `true` | `false` laat de browser zien (in de interface is dat een schakelaar). |
+| `weigeren` | `true` | `false` slaat het weigeren-scenario over (scheelt ongeveer 25 seconden per URL). In de interface een schakelaar, in de CLI `--zonder-weigeren`. |
 | `wachttijden.minimaal_voor_consent_ms` | `10000` | Minimale wachttijd na het laden, ook als het netwerk eerder rustig is. Vertraagde pixels krijgen zo hun kans. |
 | `wachttijden.minimaal_na_consent_ms` | `8000` | Zelfde, na consent. |
+| `wachttijden.minimaal_na_herladen_ms` | `6000` | Zelfde, na herladen (meting 3 en het weigeren-scenario). |
 | `wachttijden.maximaal_ms` | `30000` | Harde bovengrens per meting; een site met een eeuwige poll houdt de scan niet op. |
 | `wachttijden.netwerk_rust_ms` | `2000` | Hoe lang het stil moet zijn om "rustig" te heten. |
 | `wachttijden.navigatie_timeout_ms` | `45000` | Time-out voor het laden van de pagina. |
@@ -260,7 +302,7 @@ Wat erin staat:
 - **voorblad**: logo, datum, de website, de cookiebanner en hoe consent is
   gegeven, de drie kerncijfers en eventuele meldingen (blokkade, gestopte scan,
   geen banner, waarschuwingen);
-- **overzicht**: de acht regels in één tabel, met het gekleurde nummer als
+- **overzicht**: de detectieregels in één tabel, met het gekleurde nummer als
   leeswijzer;
 - **bevindingen in detail**: per regel alles wat de interface toont, zonder
   afkappen: elke cookie, elke externe host, elke identifier met zijn
@@ -339,8 +381,14 @@ lettertype zitten in het bestand zelf, zodat de PDF zonder internet klopt.
 - **Eén scan tegelijk.** Elke scan start een eigen Chromium; parallel draaien
   zou de meting vertekenen. Start je een tweede scan, dan zegt de tool dat hij
   bezet is.
-- **Geen scroll, geen klikken**: de meting is de landingssituatie. Tags die pas
-  bij scrollen of interactie vuren, zie je niet.
+- **Geen scroll, geen klikken** buiten de banner: de meting is de
+  landingssituatie, plus herladen. Tags die pas bij scrollen of interactie
+  vuren, zie je niet.
+- **Server-naar-server-tracking is onzichtbaar.** Wat een server-side
+  tagging-server of de Meta Conversions API doorstuurt, gebeurt buiten de
+  browser. De tool ziet alleen de hits die erheen gaan (regel 12).
+- **Eén pagina, desktop, vanaf een Nederlands IP-adres.** Scan meer URL's voor
+  meer pagina's; mobiel en andere landen kunnen anders uitpakken.
 - **Initiators** komen uit het DevTools Protocol van het hoofdframe. Voor requests
   uit iframes die in een eigen proces draaien (YouTube, Cookiebot) is de initiator
   leeg; de `iframe_url` per request laat wel zien uit welk frame ze komen.

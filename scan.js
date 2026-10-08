@@ -32,6 +32,7 @@ Opties:
   --headed         browser zichtbaar laten draaien
   --pdf            ook een PDF-rapport schrijven, in de huisstijl van Pure Minds
   --geen-stealth   de browser zich als automation laten melden (voor vergelijken)
+  --zonder-weigeren  het weigeren-scenario overslaan (scheelt ongeveer 25 seconden per URL)
   -h, --help       deze uitleg
 
 Zonder URL's op de commandoregel worden de URL's uit het configuratiebestand gescand.`;
@@ -44,6 +45,7 @@ async function main() {
       headed: { type: 'boolean', default: false },
       pdf: { type: 'boolean', default: false },
       'geen-stealth': { type: 'boolean', default: false },
+      'zonder-weigeren': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
     allowPositionals: true,
@@ -69,6 +71,7 @@ async function main() {
   const instellingen = {
     headless: values.headed ? false : config.headless !== false,
     stealth: values['geen-stealth'] ? false : config.stealth !== false,
+    weigeren: values['zonder-weigeren'] ? false : config.weigeren !== false,
     wachttijden: { ...STANDAARD_WACHTTIJDEN, ...(config.wachttijden || {}) },
   };
   const pdfGewenst = values.pdf || config.pdf === true;
